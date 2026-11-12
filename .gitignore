@@ -16,3 +16,8 @@ interface/Medidas/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Firmware
+firmware/quadpv_cube/build/
+firmware/teste_host/sim
+firmware/teste_host/saida*.txt

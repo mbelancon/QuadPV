@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="Arial, Helvetica, sans-serif" font-size="14">
+<title>QuadPV: um canal da carga eletrônica (módulo 1)</title>
+<style>.w{stroke:#222;stroke-width:2;fill:none}.c{fill:#fff;stroke:#222;stroke-width:2}.lbl{fill:#222}.val{fill:#0b5394;font-weight:bold}.pin{fill:#b45f06;font-weight:bold}.note{fill:#555;font-size:12px}</style>
+<rect width="960" height="560" fill="#ffffff"/>
+<text x="20" y="30" font-size="18" font-weight="bold" class="lbl">QuadPV: um canal da carga eletrônica (módulo 1; os outros três são iguais)</text>
+<rect x="40" y="80" width="90" height="130" class="c"/>
+<text x="85" y="140" text-anchor="middle" class="lbl">Módulo</text><text x="85" y="158" text-anchor="middle" class="lbl">FV 1</text>
+<text x="138" y="112" class="lbl">+</text><text x="138" y="184" class="lbl">−</text>
+<path d="M130 190 H150 V200" class="w"/><path d="M138 200 H162 M142 206 H158 M146 212 H154" class="w"/>
+<path d="M130 120 H260" class="w"/><circle cx="200" cy="120" r="4" fill="#222"/>
+<path d="M200 120 V55 H700" class="w"/>
+<text x="705" y="60" class="pin">PA5 (A5) · tensão V1</text>
+<text x="230" y="48" class="note">direto ao ADC (Voc &lt; 3,3 V); 100 nF ao GND junto ao pino</text>
+<rect x="260" y="95" width="120" height="60" class="c"/>
+<text x="320" y="122" text-anchor="middle" class="lbl">WCS2702</text><text x="320" y="140" text-anchor="middle" class="note">sensor Hall</text>
+<text x="255" y="113" text-anchor="end" class="note">IP+</text><text x="385" y="113" class="note">IP−</text>
+<path d="M320 95 V80 H700" class="w"/>
+<text x="705" y="85" class="pin">PA1 (A1) · corrente I1</text>
+<path d="M380 120 H560 V250" class="w"/>
+<rect x="530" y="250" width="60" height="80" class="c"/>
+<text x="560" y="285" text-anchor="middle" class="lbl">Q1</text><text x="560" y="302" text-anchor="middle" class="note">N-MOS</text>
+<text x="566" y="246" class="note">D</text><text x="566" y="345" class="note">S</text><text x="524" y="285" text-anchor="end" class="note">G</text>
+<text x="600" y="270" class="val">IRLZ44N</text><text x="600" y="288" class="note">nível lógico, TO-220</text>
+<path d="M560 330 V395" class="w"/><circle cx="560" cy="380" r="4" fill="#222"/>
+<rect x="545" y="395" width="30" height="60" class="c"/><path d="M560 455 V462" class="w"/><path d="M548 462 H572 M552 468 H568 M556 474 H564" class="w"/>
+<text x="585" y="420" class="val">Rs = 1 Ω</text><text x="585" y="437" class="note">1 %, 0,5 W</text>
+<path d="M300 245 L300 335 L400 290 Z" class="c"/>
+<text x="306" y="272" class="lbl">+</text><text x="306" y="321" class="lbl">−</text><text x="330" y="295" class="lbl">U1</text>
+<text x="350" y="222" text-anchor="middle" class="val">MCP6002 (½)</text>
+<text x="350" y="238" text-anchor="middle" class="note">rail-to-rail, alimentado em 3,3 V</text>
+<path d="M400 290 H430" class="w"/><circle cx="400" cy="290" r="4" fill="#222"/>
+<rect x="430" y="280" width="50" height="20" class="c"/><text x="455" y="273" text-anchor="middle" class="val">100 Ω</text>
+<path d="M480 290 H530" class="w"/><circle cx="505" cy="290" r="4" fill="#222"/>
+<path d="M505 290 V305" class="w"/><rect x="495" y="305" width="20" height="40" class="c"/><path d="M505 345 V352" class="w"/><path d="M493 352 H517 M497 358 H513 M501 364 H509" class="w"/>
+<text x="490" y="322" text-anchor="end" class="val">100 kΩ</text>
+<path d="M560 380 H440" class="w"/><rect x="380" y="370" width="60" height="20" class="c"/>
+<text x="410" y="408" text-anchor="middle" class="val">1 kΩ</text>
+<path d="M380 380 H280 V315 H300" class="w"/><circle cx="280" cy="340" r="4" fill="#222"/>
+<path d="M400 290 V340 H352 M352 328 V352 M344 328 V352 M344 340 H280" class="w"/>
+<text x="348" y="366" text-anchor="middle" class="val">2,2 nF</text>
+<text x="20" y="262" class="pin">PB6</text><text x="20" y="278" class="note">TIM4_CH1</text><text x="20" y="294" class="note">PWM 70 kHz</text>
+<path d="M70 265 H90" class="w"/><rect x="90" y="255" width="60" height="20" class="c"/><text x="120" y="248" text-anchor="middle" class="val">10 kΩ</text>
+<path d="M150 265 H300" class="w"/><circle cx="190" cy="265" r="4" fill="#222"/>
+<path d="M190 265 V300" class="w"/><circle cx="190" cy="300" r="4" fill="#222"/>
+<path d="M190 300 H165 V318 M153 318 H177 M153 326 H177 M165 326 V340" class="w"/><path d="M153 340 H177 M157 346 H173 M161 352 H169" class="w"/>
+<path d="M190 300 H215 V305" class="w"/><rect x="205" y="305" width="20" height="40" class="c"/><path d="M215 345 V350" class="w"/><path d="M203 350 H227 M207 356 H223 M211 362 H219" class="w"/>
+<text x="148" y="320" text-anchor="end" class="val">470 nF</text><text x="148" y="336" text-anchor="end" class="note">τ = 0,47 ms</text>
+<text x="232" y="330" class="val">1,1 kΩ</text>
+<rect x="680" y="300" width="270" height="245" fill="#f6f8fa" stroke="#ccc"/>
+<text x="692" y="322" font-weight="bold" class="lbl">Como funciona</text>
+<text x="692" y="344" class="note">PWM + RC + divisor: referência de</text>
+<text x="692" y="363" class="note">0 a 327 mV (3,3 V × 1,1/11,1).</text>
+<text x="692" y="382" class="note">O op-amp ajusta o gate até a queda em</text>
+<text x="692" y="401" class="note">Rs igualar a referência: I = Vref / 1 Ω,</text>
+<text x="692" y="420" class="note">de 0 a 327 mA, ~0,32 mA por passo.</text>
+<text x="692" y="439" class="note">PWM 0: MOSFET aberto → Voc.</text>
+<text x="692" y="458" class="note">Referência acima de Isc: MOSFET</text>
+<text x="692" y="477" class="note">saturado, V ≈ Isc × 1 Ω → ~Isc.</text>
+<text x="692" y="496" class="note">A corrente medida continua sendo a do</text>
+<text x="692" y="515" class="note">sensor Hall (A1); Rs só fecha a malha.</text>
+<text x="692" y="534" class="note">Os 4 canais: PB6–PB9 e 2 × MCP6002.</text>
+</svg>

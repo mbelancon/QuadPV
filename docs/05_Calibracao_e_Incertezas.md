@@ -21,6 +21,8 @@ Cubra os quatro módulos e clique em **Zerar correntes…**. A interface promedi
 
 Refaça o zero no início de cada experimento e sempre que mudar a Vref ou a opção do sensor A0.
 
+Com o **firmware 2.x** o zero é automático: o primeiro ponto de cada varredura I–V é tomado com o MOSFET aberto (corrente nula), e a leitura de cada sensor nesse ponto vira o offset. Como as varreduras se repetem (a cada 60 s, por padrão), a deriva dos sensores ao longo do dia também é corrigida.
+
 ## Calibração da sensibilidade (recomendada)
 
 A sensibilidade nominal (0,9 mV/mA) vale para todos os canais, mas cada sensor tem a sua. Para calibrar:
@@ -45,4 +47,14 @@ Cada ponto é a média de 192 leituras, o que reduz o ruído aleatório (até ~1
 
 Com **carga resistiva fixa**, o ponto de operação do módulo muda com a irradiância. Com pouca luz o módulo trabalha perto do curto-circuito e a potência na carga vale `P = R·I²`. Por isso a **razão das potências exagera** a diferença entre coberturas: no modelo de diodo único usado na simulação, uma cobertura com 93 % de transmitância aparece com ~86,5 % da potência, em quase toda a faixa de irradiância.
 
-Já a **razão das correntes** fica em ~93 %, igual à razão das correntes de curto-circuito, enquanto a tensão de operação ficar abaixo do joelho da curva I–V. Para comparar a transmissão óptica de coberturas, use **Corrente relativa**. Para comparar a energia que cada módulo entregaria a um sistema real (com rastreamento do ponto de máxima potência), é preciso medir a curva I–V ou operar no ponto de máxima potência, o que exige uma carga eletrônica.
+Já a **razão das correntes** fica em ~93 %, igual à razão das correntes de curto-circuito, enquanto a tensão de operação ficar abaixo do joelho da curva I–V. Com a carga fixa, para comparar a transmissão óptica de coberturas, use **Corrente relativa**.
+
+Com a **carga eletrônica** (firmware 2.x), as grandezas certas vêm das varreduras:
+
+| Pergunta | Grandeza |
+|---|---|
+| Quanto de luz cada cobertura deixa passar? | **Isc relativa** (proporcional à luz que chega às células) |
+| Quanta energia cada módulo entregaria a um sistema com MPPT? | **Pmax relativa** e a energia acumulada no modo MPPT |
+| A cobertura muda a temperatura ou as perdas do módulo? | **Voc** (cai com a temperatura) e **fator de preenchimento** |
+
+Na simulação, com coberturas de 97 % e 93 %, as varreduras dão Isc relativa de ~96 % e ~92 % e Pmax relativa de ~95 % e ~92 %, dentro do ruído do ADC. Com a carga fixa, a potência relativa do módulo de 93 % aparecia como ~86 %.
