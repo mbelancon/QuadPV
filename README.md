@@ -1,7 +1,72 @@
-# SolarPower
+# QuadPV: quatro módulos fotovoltaicos medidos lado a lado com STM32
 
-This systems consists in perform accurate readings of current and voltage using an STM32103C8T6 microcontroller (MCU). The pv.ino file contains the code that can be recorded in the STM32 using the arduino IDE (Tip: to accomplish that you should install the STM Cube Programmer https://www.st.com/en/development-tools/stm32cubeprog.html before install the Arduino IDE).
+Sistema de baixo custo para comparar **quatro módulos fotovoltaicos pequenos e idênticos** sob as mesmas condições, por exemplo com coberturas de vidro diferentes. Um **STM32F103C8T6 (Blue Pill)** mede a tensão e a corrente de cada módulo, faz médias de cerca de 1 s e envia as leituras por USB. A interface em Python mostra potência, tensão, corrente, energia acumulada e a comparação entre os módulos em tempo real, e grava tudo em CSV.
 
-This MCU has 10 analog-to-digital converters (ADC). We have connected five (5) WCS2702 current sensors (A0 to A4) and the voltages (between 0 and 3.3v) can be measured directly by the ADC's (here we have used A5 to A8). The negative side of the solar cell (oftenly the upside) is than connected to the ground in the MCU, and the positive side (oftenly the downside) is connected simultaneously to the ADC that reads the voltage and to the load (which is connected in series to the current sensor). The load is than connected to the ground in the MCU. As you may have noted, there is 5 current readings and 4 voltage readings. This was done just to take the "zero" reading of the first sensor and record it, providing some information about flutuations in the readings that may arise from some noise. 
+![Interface, aba Medidas (modo simulado)](docs/imagens/interface_medidas.png)
 
-The MCU averages the current and voltage readings during about one second (192 readings 5 ms delayed from each other) and sends the ADC readings of A0-A8 pins trough serial over usb. The file "pv-stm32.py" contains a small software to be run in python3, which is designed to read this values, store it in a pandas and save/graph when requested (by pushing a button).
+```
+            ┌──────────────── sensor de referência (sem corrente) ── A0
+            │
+ módulo 1 (+) ──┬──────────────────────────────────────────────── A5 (tensão)
+                └── WCS2702 ── carga R ── GND        saída ─────── A1 (corrente)
+ módulo 1 (−) ── GND
+   ... idem para os módulos 2, 3 e 4: corrente em A2, A3, A4; tensão em A6, A7, A8
+                                                     ┌────────┐
+                                     A0..A8 ───────► │ STM32  │ ── USB ──► PC: QuadPV
+                                                     │ F103   │
+                                                     └────────┘
+```
+
+## Hardware
+
+| Componente | Função | Ligação |
+|---|---|---|
+| Blue Pill STM32F103C8T6 | Aquisição (ADC de 12 bits) e envio por USB | USB ao PC |
+| 5 × sensor de corrente Hall WCS2702 | Corrente de cada módulo; o quinto fica sem corrente e serve de referência | Saídas em **A0** (referência) e **A1–A4** |
+| 4 × carga resistiva | Ponto de operação de cada módulo | Em série com o sensor, entre o (+) do módulo e o GND |
+| 4 módulos fotovoltaicos | Objetos de medida, com tensão de circuito aberto abaixo de 3,3 V | (+) em **A5–A8**, (−) no GND |
+
+Detalhes e cuidados em [docs/02_Hardware_e_Ligacoes.md](docs/02_Hardware_e_Ligacoes.md).
+
+## Início rápido
+
+1. Monte o hardware conforme [docs/02_Hardware_e_Ligacoes.md](docs/02_Hardware_e_Ligacoes.md).
+2. Grave o firmware [`firmware/pv/pv.ino`](firmware/pv/pv.ino) (ver [docs/03_Firmware.md](docs/03_Firmware.md)).
+3. Instale as dependências da interface (Python 3.10 ou superior; com o Miniconda, no Anaconda Prompt):
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Conecte a placa pelo USB e rode:
+   ```bash
+   python interface/quadpv.py
+   ```
+   A porta é detectada sozinha. Sem a placa, marque **Simular medidas** para testar a interface.
+5. **Antes de medir, cubra os módulos e clique em "Zerar correntes…"**. Depois descubra, digite o nome da amostra e clique em **Gravar**. Os arquivos vão para a pasta `Medidas/`, ao lado do script.
+
+## Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| [01_Materiais.md](docs/01_Materiais.md) | Hardware e software necessários |
+| [02_Hardware_e_Ligacoes.md](docs/02_Hardware_e_Ligacoes.md) | Ligações dos sensores, módulos e cargas; limites do ADC |
+| [03_Firmware.md](docs/03_Firmware.md) | O que o firmware faz, protocolo serial e gravação |
+| [04_Interface.md](docs/04_Interface.md) | Instalação e funcionalidades da interface; formato do CSV |
+| [05_Calibracao_e_Incertezas.md](docs/05_Calibracao_e_Incertezas.md) | Conversão das contagens, zero, calibração dos sensores, resolução e escolha da métrica de comparação |
+
+## Estrutura do repositório
+
+```
+├── interface/
+│   └── quadpv.py            Interface (PySide6/PyQt + pyqtgraph + NumPy)
+├── firmware/pv/pv.ino       Firmware atual (Arduino IDE, núcleo STM32)
+├── docs/                    Documentação
+├── packaging/               Spec e dependências do PyInstaller (executável Windows)
+├── .github/workflows/       Geração automática do executável nas Releases
+├── legado/pv-stm32.py       Interface original (Tkinter), mantida só como referência
+├── CHANGELOG.md             Histórico de versões
+└── requirements.txt         Dependências Python
+```
+
+## Versões
+
+O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). O número aparece no título da janela.
