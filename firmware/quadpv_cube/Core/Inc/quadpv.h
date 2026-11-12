@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file    quadpv.h
-  * @brief   QuadPV: aquisição, carga eletrônica (MOSFET), varredura I-V e MPPT
+  * @brief   QuadPV: Isc e Voc de 4 módulos (shunt + MOSFET como chave), com redução de ruído
   ******************************************************************************
   */
 #ifndef QUADPV_H
@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 
-#define QPV_FW_VERSION   "2.0.0"
+#define QPV_FW_VERSION   "3.0.0"
 
 void QPV_Init(void);
 void QPV_Loop(void);

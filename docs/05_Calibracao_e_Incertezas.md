@@ -1,60 +1,73 @@
 # 5. Conversão, calibração e incertezas
 
+## Por que Isc
+
+A corrente de curto-circuito é proporcional ao número de fótons absorvidos pelas células, ponderado pela resposta espectral do silício (~300–1100 nm). É exatamente o que a cobertura altera, por transmissão, reflexão e espalhamento. A Isc quase não depende da temperatura (~+0,05 % por kelvin). Já a potência no ponto de máxima potência mistura a parte óptica com temperatura, tensão e perdas internas.
+
 ## Conversão
 
-Com `k = Vref / 4096` (mV por contagem; 0,806 mV com Vref = 3300 mV):
+Com `k = Vrefint / r` (mV por contagem; ~0,806 mV com 3,3 V):
 
 ```
-V_n [mV] = A(4+n) · k · divisor_n
-I_n [mA] = ( (A_n − A0) · k − offset_n ) / sensibilidade_n          (n = 1..4)
-P_n [mW] = V_n · I_n / 1000
-E_n [mWh] = ∫ P_n dt / 3600   (regra do trapézio; intervalos > 30 s não entram)
+I_n [mA]  = (a_n − zero_n) · k / R_shunt,n / cal_Isc,n
+Voc_n [mV] = v_n · k · divisor_n − cal_Voc,n
 ```
 
-Subtrair `A0` remove a deriva comum dos sensores Hall. O `offset_n` é medido no zero, com os módulos cobertos.
+- `a_n`, `v_n`, `r` são as médias enviadas pelo firmware, em contagens.
+- `zero_n` é a leitura do shunt na última janela de Voc (sem corrente).
+- `cal_Isc,n` e `cal_Voc,n` vêm da calibração dos módulos (1 e 0 sem calibração).
 
-A interface original usava os mesmos números: 0,8056 mV/contagem e 0,9 mV/mA.
+Com *Tensão do ADC pela Vrefint* desligada, `k = Vref / 4096`.
 
-## Zero das correntes
+## Incerteza da Isc relativa
 
-Cubra os quatro módulos e clique em **Zerar correntes…**. A interface promedia ~5 leituras e guarda o offset de cada sensor. A mensagem final mostra o desvio-padrão de cada sensor no zero, em mA: é uma boa estimativa do ruído da corrente.
+A razão Isc_n / Isc_ref é a grandeza principal. Fatores que **não** a afetam:
 
-Refaça o zero no início de cada experimento e sempre que mudar a Vref ou a opção do sensor A0.
+- a variação do sol, porque os módulos são amostrados juntos;
+- a tensão de referência do ADC (aparece em cima e embaixo e se cancela);
+- a interferência de 60 Hz, que se cancela nas médias sincronizadas;
+- o offset dos canais, descontado a cada minuto.
 
-Com o **firmware 2.x** o zero é automático: o primeiro ponto de cada varredura I–V é tomado com o MOSFET aberto (corrente nula), e a leitura de cada sensor nesse ponto vira o offset. Como as varreduras se repetem (a cada 60 s, por padrão), a deriva dos sensores ao longo do dia também é corrigida.
+O que **sobra**:
 
-## Calibração da sensibilidade (recomendada)
-
-A sensibilidade nominal (0,9 mV/mA) vale para todos os canais, mas cada sensor tem a sua. Para calibrar:
-
-1. Ligue uma fonte de corrente (ou uma fonte de tensão com resistor) em série com o sensor e um multímetro.
-2. Anote a corrente do multímetro e a corrente indicada pela interface em 3 a 5 pontos dentro da faixa de uso.
-3. Nova sensibilidade = sensibilidade atual × (corrente indicada / corrente do multímetro), pela inclinação do ajuste linear.
-4. Informe o valor em *Configurar módulos…*.
-
-Meça também o pino 3V3 da Blue Pill com o multímetro e informe como Vref: o ADC usa essa tensão como referência, e o erro dela entra em escala em V e em I.
-
-## Resolução
-
-| Grandeza | Por contagem do ADC | Observação |
+| Fonte | Tamanho típico | Como reduzir |
 |---|---|---|
-| Tensão | 0,81 mV | |
-| Corrente | 0,90 mA | com 0,9 mV/mA |
+| Ruído do ADC | ~0,01 mA em 1 s (σ de 2 contagens / √6000); ~0,003 % da razão com 1 min de média | Janela de média maior |
+| Tolerância dos shunts | até 1 % por shunt | Medir cada shunt e informar; ou calibrar os módulos |
+| Diferenças entre os módulos "idênticos" | 1–2 % | **Calibrar os módulos** |
+| Deriva térmica dos shunts | 50 ppm/K: 0,05 % com 10 K de diferença | Shunts à sombra, perto uns dos outros |
+| Corrente perdida na resistência paralela do módulo | V/Rp: ~0,25 V / 500 Ω = 0,5 mA (0,4 %), quase igual nos 4 | Já se cancela em boa parte na razão |
+| Não uniformidade da luz, sombra parcial | qualquer | Módulos lado a lado, mesma orientação, sem sombras |
 
-Cada ponto é a média de 192 leituras, o que reduz o ruído aleatório (até ~14 vezes) mas não o erro de escala. Em correntes baixas (pouca luz), a resolução relativa piora: 1 mA em 20 mA já é 5 %.
+## Calibração dos módulos
 
-## Qual grandeza comparar
+Módulos de um mesmo lote diferem em ~1–2 % na Isc e em alguns mV na Voc. Os shunts e a fiação também diferem um pouco. Como o experimento compara coberturas pela razão entre módulos, essas diferenças entrariam como se fossem efeito da cobertura.
 
-Com **carga resistiva fixa**, o ponto de operação do módulo muda com a irradiância. Com pouca luz o módulo trabalha perto do curto-circuito e a potência na carga vale `P = R·I²`. Por isso a **razão das potências exagera** a diferença entre coberturas: no modelo de diodo único usado na simulação, uma cobertura com 93 % de transmitância aparece com ~86,5 % da potência, em quase toda a faixa de irradiância.
+Procedimento:
 
-Já a **razão das correntes** fica em ~93 %, igual à razão das correntes de curto-circuito, enquanto a tensão de operação ficar abaixo do joelho da curva I–V. Com a carga fixa, para comparar a transmissão óptica de coberturas, use **Corrente relativa**.
+1. Ponha os quatro módulos na **mesma condição**: todos sem cobertura, ou todos com a cobertura de referência. Confira se não há sombra nem sujeira diferente.
+2. Meça alguns minutos, de preferência com sol estável. Use **Média** de 5 min ou mais. Pelo menos uma medida de Voc deve cair nesse período.
+3. Clique em **Calibrar módulos…**, confira os valores (razões perto de 1 e diferenças de Voc de poucos mV) e aplique.
+4. Ponha as coberturas e meça.
 
-Com a **carga eletrônica** (firmware 2.x), as grandezas certas vêm das varreduras:
+Refaça a calibração de tempos em tempos e ao trocar um módulo ou shunt. Uma boa prática é intercalar: calibração, coberturas, calibração de novo. Se as duas calibrações forem iguais dentro do erro, o sistema ficou estável durante a medida. Outra opção é trocar as coberturas de módulo entre medidas: se a razão acompanhar a cobertura, e não o módulo, o efeito é da cobertura.
 
-| Pergunta | Grandeza |
-|---|---|
-| Quanto de luz cada cobertura deixa passar? | **Isc relativa** (proporcional à luz que chega às células) |
-| Quanta energia cada módulo entregaria a um sistema com MPPT? | **Pmax relativa** e a energia acumulada no modo MPPT |
-| A cobertura muda a temperatura ou as perdas do módulo? | **Voc** (cai com a temperatura) e **fator de preenchimento** |
+## Estimativa de ΔT pela Voc
 
-Na simulação, com coberturas de 97 % e 93 %, as varreduras dão Isc relativa de ~96 % e ~92 % e Pmax relativa de ~95 % e ~92 %, dentro do ruído do ADC. Com a carga fixa, a potência relativa do módulo de 93 % aparecia como ~86 %.
+A Voc cai ~2,2 mV por kelvin em cada célula de silício. Com Ns células em série, uma diferença de temperatura ΔT entre dois módulos dá ΔVoc ≈ Ns · (−2,2 mV/K) · ΔT.
+
+A Voc também cresce com a luz: ΔVoc_luz = Ns · n · (kT/q) · ln(Isc_n / Isc_ref). A interface desconta essa parte usando a Isc média dos 10 s anteriores:
+
+```
+ΔT_n = (ΔVoc_n − Ns · n · (kT/q) · ln(Isc_n / Isc_ref)) / (Ns · dVoc/dT)
+```
+
+Parâmetros em *Configurar módulos…*: Ns (padrão 4), fator de idealidade n (1,3), temperatura típica dos módulos para kT/q (45 °C) e dVoc/dT por célula (−2,2 mV/K).
+
+**Limitações:** o ΔT é uma **estimativa relativa**, útil para ver se uma cobertura aquece mais o módulo que outra. O erro vem de:
+
+- n e dVoc/dT, que dependem da célula: ±20 % no valor de ΔT;
+- a calibração de Voc, que precisa ser feita com os módulos à mesma temperatura;
+- a resolução: 1 mV de ΔVoc ≈ 0,1 K.
+
+Para temperatura absoluta, cole um termopar ou um NTC atrás de cada módulo. As entradas PA0 e PB1 estão livres.

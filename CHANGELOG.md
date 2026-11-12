@@ -1,6 +1,19 @@
 # Histórico de versões
 
-## 2.0.0 – nome QuadPV, carga eletrônica, firmware STM32Cube, interface nova
+## 3.0.0 – Isc e Voc com shunt e chave, foco em ruído
+- Hardware simplificado: cada módulo em curto por um shunt de 2 Ω através de um MOSFET IRLZ44N usado
+  como chave (PB6–PB9). Sem sensores Hall, op-amp ou carga eletrônica. Filtros RC nas entradas do ADC
+  e 470 kΩ para manter o zero dos shunts acima de 0 V.
+- Firmware 3.0: ADC disparado pelo TIM3 a 6000 Hz exatos; médias de 6000 varreduras (60 ciclos de
+  60 Hz); Vrefint em toda varredura; desvio-padrão por canal; janela de Voc de 400 varreduras que
+  também mede o zero dos shunts; comandos em fila (`?`, `V`, `T`, `M C|O`).
+- Interface: protocolo novo (linhas `D` e `V`), Isc relativa com erro padrão, média móvel de 1 s a
+  15 min, calibração dos módulos em condição idêntica, ΔT estimado pela Voc com desconto do efeito da
+  luz, aba de diagnóstico de ruído, gravação de Isc e Voc em dois CSV, simulação do firmware novo,
+  identificação da placa (recusa outras placas e avisa firmware incompatível).
+- A versão com carga eletrônica (curvas I–V e MPPT) ficou no branch `carga-eletronica`.
+
+## 2.0.0 – nome QuadPV, carga eletrônica, firmware STM32Cube, interface nova (branch `carga-eletronica`)
 - Projeto renomeado de SolarPower para **QuadPV**.
 - **Carga eletrônica** por módulo (MOSFET + resistor de 1 Ω + amplificador operacional), com a
   referência de corrente vinda do PWM do TIM4 (PB6–PB9). Esquema em `docs/02_Hardware_e_Ligacoes.md`.

@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : QuadPV - Blue Pill STM32F103C8
+  * @brief          : QuadPV - Blue Pill STM32F103C8 (Isc e Voc de 4 módulos)
   *
   * Estrutura gerada pelo STM32CubeMX (QuadPV.ioc). A lógica do QuadPV fica em
   * quadpv.c; aqui só há a inicialização e as chamadas QPV_Init()/QPV_Loop()
@@ -19,13 +19,13 @@
 
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
-TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim3;
 
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
-static void MX_TIM4_Init(void);
+static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN 0 */
 /* Blue Pill: força o PC a reenumerar o USB depois de um reset (puxa D+ / PA12 para baixo). */
@@ -56,7 +56,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_ADC1_Init();
-  MX_TIM4_Init();
+  MX_TIM3_Init();
   MX_USB_DEVICE_Init();
 
   /* USER CODE BEGIN 2 */
@@ -108,21 +108,26 @@ void SystemClock_Config(void)
   }
 }
 
-/* ADC1: 9 canais em modo scan contínuo, DMA circular. 71,5 ciclos de amostragem:
- * 84 ciclos a 12 MHz = 7 us por canal, 63 us por varredura dos 9 canais (~15,9 mil por segundo). */
+/* ADC1: 9 conversões por disparo do TIM3 (6 kHz):
+ *   IN1..IN4 (PA1..PA4) = tensão nos shunts (corrente dos módulos 1..4)
+ *   IN5..IN8 (PA5..PA7, PB0) = tensão dos módulos 1..4
+ *   IN17 = Vrefint (1,20 V típico), para acompanhar a tensão de alimentação do ADC
+ * 71,5 ciclos nos canais externos (fontes de baixa impedância: shunt e módulo) e 239,5 na
+ * Vrefint (a ST pede >= 17,1 us). Uma varredura leva 924 ciclos = 77 us, menos que os 167 us
+ * entre disparos. */
 static void MX_ADC1_Init(void)
 {
   static const uint32_t channels[9] = {
-    ADC_CHANNEL_0, ADC_CHANNEL_1, ADC_CHANNEL_2, ADC_CHANNEL_3, ADC_CHANNEL_4,
-    ADC_CHANNEL_5, ADC_CHANNEL_6, ADC_CHANNEL_7, ADC_CHANNEL_8
+    ADC_CHANNEL_1, ADC_CHANNEL_2, ADC_CHANNEL_3, ADC_CHANNEL_4,
+    ADC_CHANNEL_5, ADC_CHANNEL_6, ADC_CHANNEL_7, ADC_CHANNEL_8, ADC_CHANNEL_VREFINT
   };
   ADC_ChannelConfTypeDef sConfig = {0};
 
   hadc1.Instance = ADC1;
   hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T3_TRGO;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.NbrOfConversion = 9;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -133,7 +138,7 @@ static void MX_ADC1_Init(void)
   {
     sConfig.Channel = channels[i];
     sConfig.Rank = ADC_REGULAR_RANK_1 + i;
-    sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
+    sConfig.SamplingTime = (i == 8) ? ADC_SAMPLETIME_239CYCLES_5 : ADC_SAMPLETIME_71CYCLES_5;
     if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
     {
       Error_Handler();
@@ -141,50 +146,35 @@ static void MX_ADC1_Init(void)
   }
 }
 
-/* TIM4: PWM de 10 bits (ARR = 1023) a 72 MHz / 1024 = 70,3 kHz nos 4 canais. */
-static void MX_TIM4_Init(void)
+/* TIM3: base de tempo do ADC. 72 MHz / 12000 = 6000 Hz exatos (cristal), TRGO na atualização.
+ * 6000 varreduras = 1 s = 60 ciclos de 60 Hz: a média de cada segundo rejeita a rede elétrica
+ * e as harmônicas (inclusive o piscar de 120 Hz das lâmpadas). */
+static void MX_TIM3_Init(void)
 {
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
 
-  htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 0;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 1023;
-  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 12000 - 1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
   }
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;                       /* MOSFET desligado (módulo em aberto) */
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK ||
-      HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK ||
-      HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK ||
-      HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  HAL_TIM_MspPostInit(&htim4);
 }
 
 static void MX_DMA_Init(void)
@@ -209,6 +199,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+
+  /* Gates dos MOSFETs (chaves): começam desligados (módulos em aberto) até o QPV_Init. */
+  HAL_GPIO_WritePin(GATE_GPIO_Port, GATE_ALL_Pins, GPIO_PIN_RESET);
+  GPIO_InitStruct.Pin = GATE_ALL_Pins;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GATE_GPIO_Port, &GPIO_InitStruct);
 }
 
 /* USER CODE BEGIN 4 */

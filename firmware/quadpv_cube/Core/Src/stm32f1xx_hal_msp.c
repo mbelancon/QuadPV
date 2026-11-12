@@ -10,8 +10,6 @@
 
 extern DMA_HandleTypeDef hdma_adc1;
 
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
-
 void HAL_MspInit(void)
 {
   __HAL_RCC_AFIO_CLK_ENABLE();
@@ -28,8 +26,8 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef *hadc)
     __HAL_RCC_ADC1_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
-    /* PA0..PA7 -> IN0..IN7; PB0 -> IN8 */
-    GPIO_InitStruct.Pin = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3
+    /* PA1..PA7 -> IN1..IN7; PB0 -> IN8 (PA0 fica livre) */
+    GPIO_InitStruct.Pin = GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3
                         | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -57,7 +55,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef *hadc)
   if (hadc->Instance == ADC1)
   {
     __HAL_RCC_ADC1_CLK_DISABLE();
-    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3
                          | GPIO_PIN_4 | GPIO_PIN_5 | GPIO_PIN_6 | GPIO_PIN_7);
     HAL_GPIO_DeInit(GPIOB, GPIO_PIN_0);
     HAL_DMA_DeInit(hadc->DMA_Handle);
@@ -66,30 +64,16 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef *hadc)
 
 void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim_base)
 {
-  if (htim_base->Instance == TIM4)
+  if (htim_base->Instance == TIM3)
   {
-    __HAL_RCC_TIM4_CLK_ENABLE();
-  }
-}
-
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if (htim->Instance == TIM4)
-  {
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    /* PB6..PB9 -> TIM4_CH1..CH4 (PWM dos gates) */
-    GPIO_InitStruct.Pin = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+    __HAL_RCC_TIM3_CLK_ENABLE();      /* só base de tempo do ADC (TRGO), sem pinos */
   }
 }
 
 void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef *htim_base)
 {
-  if (htim_base->Instance == TIM4)
+  if (htim_base->Instance == TIM3)
   {
-    __HAL_RCC_TIM4_CLK_DISABLE();
+    __HAL_RCC_TIM3_CLK_DISABLE();
   }
 }

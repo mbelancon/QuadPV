@@ -1,34 +1,36 @@
 /**
   ******************************************************************************
   * @file    quadpv.c
-  * @brief   QuadPV: 4 módulos fotovoltaicos, cada um com um MOSFET como carga.
+  * @brief   QuadPV: corrente de curto-circuito (Isc) e tensão de circuito aberto (Voc)
+  *          de 4 módulos fotovoltaicos, com redução de ruído.
   *
-  * Aquisição
-  *   ADC1 em modo scan contínuo (9 canais, ~15,9 mil varreduras/s) com DMA circular.
-  *   A interrupção do DMA soma as amostras em dois acumuladores:
-  *     - o do segundo (médias enviadas uma vez por segundo, como no firmware antigo);
-  *     - o do ponto (médias de ~2 ms usadas na varredura I-V).
+  * Hardware de cada módulo
+  *   módulo (+) -> dreno do MOSFET (IRLZ44N); source -> shunt (2 ohm) -> GND = módulo (-).
+  *   O ADC lê a tensão no shunt (corrente) e a tensão do módulo. Gate em 1: módulo em curto
+  *   pelo shunt (Isc). Gate em 0: módulo em aberto (Voc), e o shunt fica sem corrente.
   *
-  * Carga
-  *   TIM4 gera PWM de 10 bits (0..1023) em PB6..PB9. Um filtro RC transforma o PWM numa
-  *   referência de 0 a 3,3 V; um divisor a reduz para 0 a ~330 mV e um amplificador
-  *   operacional ajusta o gate do MOSFET até a queda no resistor de 1 ohm do source igualar
-  *   essa referência. Resultado: carga de corrente constante, linear no PWM
-  *   (~0,32 mA por contagem, 0 a ~330 mA): 0 = MOSFET aberto (Voc); valor acima de Isc =
-  *   MOSFET saturado (perto do curto-circuito, Isc). Ver docs/02_Hardware_e_Ligacoes.md.
+  * Redução de ruído
+  *   - O TIM3 dispara o ADC a 6000 Hz exatos (cristal). Cada média tem 6000 varreduras =
+  *     1 s = 60 ciclos de 60 Hz: a interferência da rede e das harmônicas (inclusive o piscar
+  *     de 120 Hz das lâmpadas) cai num zero da média e se cancela.
+  *   - As 9 conversões de cada varredura levam 77 us: os 4 módulos são vistos praticamente no
+  *     mesmo instante, e as variações de luz (nuvens) se cancelam nas razões entre módulos.
+  *   - A janela de Voc (400 varreduras = 4 ciclos de 60 Hz) também mede o offset dos canais
+  *     de corrente (shunt sem corrente), para a interface descontar.
+  *   - A Vrefint (canal interno 17) entra em toda varredura: a interface acompanha a tensão
+  *     de alimentação do ADC em vez de supor 3,3 V.
+  *   - Além da média, o firmware manda o desvio-padrão de cada canal, para a interface mostrar
+  *     o ruído e a incerteza de cada leitura.
   *
-  * Modos (comando M): P = rastreia o ponto de máxima potência (perturba e observa, 1 vez
-  *   por segundo); F d = gate fixo em d; O = aberto; C = curto.
+  * Protocolo (texto, uma linha por mensagem; ver docs/03_Firmware.md)
+  *   D n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 ... s9     médias do segundo (contagens, 3 decimais)
+  *   V n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 ... s9     janela de Voc (módulos em aberto)
+  *   # ...                                             resposta a comandos
+  *   n = varreduras promediadas; m = modo (C curto, O aberto); a = shunts; v = módulos;
+  *   r = Vrefint; s = desvio-padrão de uma amostra de cada canal (contagens, 2 decimais).
   *
-  * Varredura I-V (comando S, e a cada T segundos): passada grossa de 0 a 1023 para achar,
-  *   em cada módulo, a faixa de gate em que a corrente vai de ~0 a ~Isc; depois passada fina
-  *   de QPV_NF pontos dentro dessa faixa. Os quatro módulos são varridos ao mesmo tempo.
-  *
-  * Protocolo (texto, uma linha por mensagem, ver docs/03_Firmware.md)
-  *   a cada ~1 s:  A0 A1 A5 A2 A6 A3 A7 A4 A8      (médias em contagens, mesmo formato antigo)
-  *                 G d1 d2 d3 d4 modo                (gate de cada módulo, 0..1023)
-  *   após varrer:  IV m n  ref i v d  ref i v d ...  (n pontos do módulo m, contagens)
-  *   respostas:    # ...
+  * Comandos: ? (identificação), V (mede Voc agora), T s (Voc a cada s segundos; 0 = nunca),
+  *           M C (curto: mede Isc; padrão), M O (aberto: mede Voc continuamente).
   ******************************************************************************
   */
 #include "quadpv.h"
@@ -37,88 +39,183 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 extern ADC_HandleTypeDef hadc1;
-extern TIM_HandleTypeDef htim4;
+extern TIM_HandleTypeDef htim3;
 extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /* ------------------------------------------------------------------ Parâmetros */
-#define NCH            9          /* canais do ADC: A0 ref, A1..A4 corrente, A5..A8 tensão */
-#define NMOD           4
-#define DUTY_MAX       1023
-#define DMA_SCANS      32         /* varreduras no buffer circular (metade = 16, ~1 ms) */
-#define QPV_NF         100        /* pontos da passada fina da varredura I-V */
-#define COARSE_STEP    32
-#define N_COARSE       (DUTY_MAX / COARSE_STEP + 2)   /* 0, 32, ..., 992, 1023 = 33 pontos */
-#define SETTLE_MS      3          /* > 5 constantes de tempo do RC da referência (1 kΩ x 470 nF) */
-#define SETTLE_JUMP_MS 12         /* depois de um salto grande do gate */
-#define AVG_MS         2          /* média de cada ponto (~32 varreduras do ADC) */
-#define MPPT_STEP      2          /* passo do perturba e observa, em contagens do PWM */
-#define MPPT_JUMP      16         /* passo grande quando V sai da faixa plausível do MPP */
-#define V_MPP_MIN      0.50f      /* V < 50 % de Voc: corrente pedida acima de Isc (curva plana) */
-#define V_MPP_MAX      0.95f      /* V > 95 % de Voc: carga leve demais */
-#define CLOUD_FRAC     0.25f      /* P muda > 25 % em 1 s: borda de nuvem, refaz a varredura */
-#define CLOUD_HOLD_MS  10000U     /* no máximo uma varredura extra a cada 10 s */
-#define FRAC_LO        0.03f      /* abaixo de 3 % de Isc: MOSFET ainda sem conduzir */
-#define FRAC_HI        0.98f      /* a partir de 98 % de Isc (ou V < 3 % de Voc): curva já plana */
-#define FRAC_V         0.03f
-#define DARK_I_X16     (3 * 16)   /* corrente < 3 contagens (~2,7 mA) = escuro, sem passada fina */
-#define TX_TIMEOUT_MS  50
+#define NCH             9         /* a1..a4 (shunts), v1..v4 (módulos), Vrefint */
+#define FS_HZ           6000U     /* varreduras por segundo (TIM3) */
+#define BLOCK_SCANS     16U       /* varreduras por meia-buffer do DMA (~2,7 ms) */
+#define BLOCKS_PER_SEC  (FS_HZ / BLOCK_SCANS)       /* 375 */
+#define VOC_SETTLE_BLK  8U        /* 21 ms com os MOSFETs abertos antes de medir */
+#define VOC_MEAS_BLK    25U       /* 400 varreduras = 66,7 ms = 4 ciclos de 60 Hz */
+#define SWITCH_SETTLE_BLK 8U      /* 21 ms descartados depois de uma troca de modo */
+#define FIRST_VOC_S     2U        /* primeira janela de Voc 2 s depois de ligar */
+#define TX_TIMEOUT_MS   50U
+
+typedef struct
+{
+  uint32_t n;
+  char     kind;                 /* 'D' ou 'V' */
+  char     mode;                 /* 'C' ou 'O' */
+  uint32_t sum[NCH];
+  uint64_t sumsq[NCH];
+} Accum;
 
 /* ------------------------------------------------------------------ Estado */
-static uint16_t adc_buf[DMA_SCANS * NCH];
+static uint16_t adc_buf[2U * BLOCK_SCANS * NCH];
 
-static volatile uint32_t acc_sec[NCH], n_sec;
-static volatile uint32_t acc_pt[NCH], n_pt;
-static volatile uint8_t  pt_on;
+/* acumulação (só a interrupção do DMA mexe) */
+static Accum    acc;
+static uint32_t blk = 0;                /* bloco dentro do segundo atual */
+static uint32_t settle_left = 0;        /* blocos a descartar antes de recomeçar a contar */
+static uint8_t  voc_now = 0;            /* este segundo é uma janela de Voc */
+static Accum    acc_voc;
 
-static char    mode = 'P';                /* P, F, O, C */
-static uint16_t fixed_duty = 0;
-static uint16_t duty[NMOD];
-static uint16_t voc_x16[NMOD];                 /* Voc da última varredura (x16) */
-static int32_t  i_off_x16[NMOD];               /* saída do sensor - ref com o MOSFET aberto */
-static uint8_t  have_sweep = 0;
-static int8_t   mppt_dir[NMOD] = {1, 1, 1, 1};
-static float    mppt_last_p[NMOD];
+/* resultados prontos (interrupção -> laço principal) */
+static Accum    ready_d, ready_v;
+static volatile uint8_t ready_d_flag = 0, ready_v_flag = 0;
+static volatile uint32_t lost = 0;      /* segundos perdidos (laço principal atrasado) */
 
-static uint32_t sweep_interval_s = 60;
-static volatile uint8_t sweep_request = 0;
-static uint32_t t_last_sec, t_last_sweep, t_boot_sweep;
+/* pedidos (laço principal -> interrupção) */
+static volatile uint8_t voc_request = 0;
+static volatile uint8_t restart_request = 0;
+static volatile char    mode = 'C';
 
-/* Comandos recebidos (montados na interrupção do USB, tratados no laço principal) */
+static uint32_t voc_interval_s = 60;
+static uint32_t secs_since_voc = 0;
+
+/* comandos recebidos: a interrupção do USB põe os bytes numa fila circular e o laço principal
+ * monta as linhas (vários comandos seguidos não se perdem) */
+#define RX_RING 256U
+static volatile uint8_t rx_ring[RX_RING];
+static volatile uint16_t rx_head = 0, rx_tail = 0;
 static char    rx_line[48];
-static volatile uint8_t rx_len = 0, rx_ready = 0;
+static uint8_t rx_len = 0;
 
-/* Transmissão */
+/* transmissão */
 static char    tx_buf[512];
 static uint16_t tx_len = 0;
 static uint32_t tx_stalled_until = 0;
 
-/* Pontos da varredura (médias x16) */
-static uint16_t c_ref[N_COARSE], c_i[NMOD][N_COARSE], c_v[NMOD][N_COARSE];
-static uint16_t f_ref[QPV_NF], f_i[NMOD][QPV_NF], f_v[NMOD][QPV_NF];
-static uint16_t f_lo[NMOD], f_hi[NMOD];
+/* ------------------------------------------------------------------ Gates */
+static void gates(uint8_t on)
+{
+  HAL_GPIO_WritePin(GATE_GPIO_Port, GATE_ALL_Pins, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void gates_for_mode(void)
+{
+  gates(mode == 'C');
+}
 
 /* ------------------------------------------------------------------ ADC / DMA */
-static void accumulate(const uint16_t *p)
+static void acc_reset(Accum *a, char kind)
 {
-  for (uint32_t s = 0; s < DMA_SCANS / 2; s++, p += NCH)
+  memset(a, 0, sizeof(*a));
+  a->kind = kind;
+  a->mode = mode;
+}
+
+static void acc_add(Accum *a, const uint16_t *p)
+{
+  for (uint32_t s = 0; s < BLOCK_SCANS; s++, p += NCH)
   {
-    if (n_sec < 1000000U)                 /* evita estouro se o laço principal atrasar muito */
+    for (uint32_t c = 0; c < NCH; c++)
     {
-      for (uint32_t c = 0; c < NCH; c++)
-      {
-        acc_sec[c] += p[c];
-      }
-      n_sec++;
+      uint32_t x = p[c];
+      a->sum[c] += x;
+      a->sumsq[c] += (uint64_t)(x * x);
     }
-    if (pt_on)
+  }
+  a->n += BLOCK_SCANS;
+}
+
+static void publish(const Accum *a)
+{
+  if (a->kind == 'V')
+  {
+    if (ready_v_flag)
     {
-      for (uint32_t c = 0; c < NCH; c++)
-      {
-        acc_pt[c] += p[c];
-      }
-      n_pt++;
+      lost++;
+    }
+    ready_v = *a;
+    ready_v_flag = 1;
+  }
+  else
+  {
+    if (ready_d_flag)
+    {
+      lost++;
+    }
+    ready_d = *a;
+    ready_d_flag = 1;
+  }
+}
+
+/* Chamado a cada 16 varreduras (meia-buffer), ~2,7 ms */
+static void on_block(const uint16_t *p)
+{
+  if (restart_request)                   /* troca de modo: recomeça o segundo, sem misturar */
+  {
+    restart_request = 0;
+    voc_now = 0;
+    blk = 0;
+    settle_left = SWITCH_SETTLE_BLK;
+    gates_for_mode();
+    acc_reset(&acc, 'D');
+    return;
+  }
+  if (settle_left > 0U)
+  {
+    settle_left--;
+    return;
+  }
+
+  if (blk == 0U)                         /* início de um segundo */
+  {
+    acc_reset(&acc, 'D');
+    if (voc_request)
+    {
+      voc_request = 0;
+      voc_now = 1;
+      gates(0);                          /* abre os 4 módulos ao mesmo tempo */
+      acc_reset(&acc_voc, 'V');
+      acc_voc.mode = 'O';
+    }
+  }
+
+  if (voc_now)
+  {
+    if (blk >= VOC_SETTLE_BLK && blk < VOC_SETTLE_BLK + VOC_MEAS_BLK)
+    {
+      acc_add(&acc_voc, p);
+    }
+    else if (blk == VOC_SETTLE_BLK + VOC_MEAS_BLK)
+    {
+      gates_for_mode();                  /* volta ao modo; o resto do segundo é descartado */
+      publish(&acc_voc);
+    }
+  }
+  else
+  {
+    acc_add(&acc, p);
+  }
+
+  blk++;
+  if (blk == BLOCKS_PER_SEC)
+  {
+    blk = 0;
+    if (voc_now)
+    {
+      voc_now = 0;                       /* segundo da janela de Voc: sem linha D */
+    }
+    else
+    {
+      publish(&acc);
     }
   }
 }
@@ -127,7 +224,7 @@ void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef *hadc)
 {
   if (hadc->Instance == ADC1)
   {
-    accumulate(&adc_buf[0]);
+    on_block(&adc_buf[0]);
   }
 }
 
@@ -135,100 +232,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
   if (hadc->Instance == ADC1)
   {
-    accumulate(&adc_buf[(DMA_SCANS / 2) * NCH]);
-  }
-}
-
-static void reset_sec(void)
-{
-  __disable_irq();
-  for (int c = 0; c < NCH; c++)
-  {
-    acc_sec[c] = 0;
-  }
-  n_sec = 0;
-  __enable_irq();
-}
-
-static void wait_ms(uint32_t ms)
-{
-  uint32_t t0 = HAL_GetTick();
-  while ((HAL_GetTick() - t0) < ms)
-  {
-  }
-}
-
-/* Média de um ponto (x16) depois de esperar o gate assentar */
-static void measure_point(uint32_t settle_ms, uint16_t out[NCH])
-{
-  wait_ms(settle_ms);
-  __disable_irq();
-  for (int c = 0; c < NCH; c++)
-  {
-    acc_pt[c] = 0;
-  }
-  n_pt = 0;
-  pt_on = 1;
-  __enable_irq();
-  wait_ms(AVG_MS);
-  while (n_pt < 8U)
-  {
-  }
-  __disable_irq();
-  pt_on = 0;
-  uint32_t n = n_pt;
-  uint32_t a[NCH];
-  for (int c = 0; c < NCH; c++)
-  {
-    a[c] = acc_pt[c];
-  }
-  __enable_irq();
-  for (int c = 0; c < NCH; c++)
-  {
-    out[c] = (uint16_t)((a[c] * 16U + n / 2U) / n);
-  }
-}
-
-/* ------------------------------------------------------------------ PWM */
-static void apply_duty(void)
-{
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, duty[0]);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, duty[1]);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, duty[2]);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, duty[3]);
-}
-
-static void set_all(uint16_t d)
-{
-  for (int m = 0; m < NMOD; m++)
-  {
-    duty[m] = d;
-  }
-  apply_duty();
-}
-
-/* Gate de cada módulo conforme o modo atual */
-static void apply_mode(void)
-{
-  switch (mode)
-  {
-    case 'O':
-      set_all(0);
-      break;
-    case 'C':
-      set_all(DUTY_MAX);
-      break;
-    case 'F':
-      set_all(fixed_duty);
-      break;
-    default:                                  /* 'P': começa no ponto de máxima potência */
-      for (int m = 0; m < NMOD; m++)
-      {
-        mppt_dir[m] = 1;
-        mppt_last_p[m] = 0.0f;
-      }
-      apply_duty();
-      break;
+    on_block(&adc_buf[BLOCK_SCANS * NCH]);
   }
 }
 
@@ -295,236 +299,42 @@ static void tx_put(const char *s)
   }
 }
 
-/* Valor x16 -> texto com 2 decimais (ex.: 32776 -> "2048.50") */
-static void put_x16(uint16_t v)
+/* Envia uma linha D ou V: médias com 3 decimais e desvios-padrão com 2 (sem printf de float) */
+static void send_accum(const Accum *a)
 {
-  char b[16];
-  snprintf(b, sizeof(b), " %u.%02u", (unsigned)(v >> 4), (unsigned)(((v & 15U) * 100U + 8U) / 16U));
-  tx_put(b);
-}
-
-/* ------------------------------------------------------------------ Envio por segundo */
-static void send_second(void)
-{
-  uint32_t a[NCH], n;
-  __disable_irq();
-  for (int c = 0; c < NCH; c++)
-  {
-    a[c] = acc_sec[c];
-    acc_sec[c] = 0;
-  }
-  n = n_sec;
-  n_sec = 0;
-  __enable_irq();
-  if (n == 0U)
+  char b[32];
+  if (a->n < 2U)
   {
     return;
   }
-
-  /* MPPT com as médias do segundo */
-  if (mode == 'P' && have_sweep)
+  snprintf(b, sizeof(b), "%c %lu %c", a->kind, (unsigned long)a->n, a->mode);
+  tx_put(b);
+  for (int c = 0; c < NCH; c++)
   {
-    uint8_t cloud = 0;
-    for (int m = 0; m < NMOD; m++)
-    {
-      /* médias (o número de amostras por segundo varia um pouco) */
-      float i = ((float)a[1 + m] - (float)a[0]) / (float)n - (float)i_off_x16[m] / 16.0f;
-      float v = (float)a[5 + m] / (float)n;
-      float p = (i < 0 ? -i : i) * v;
-      float voc = (float)voc_x16[m] / 16.0f;
-      float last = mppt_last_p[m];
-      if (last > 0.0f && (p < (1.0f - CLOUD_FRAC) * last || p > last / (1.0f - CLOUD_FRAC)))
-      {
-        cloud = 1;
-      }
-      int32_t d = (int32_t)duty[m];
-      if (v < V_MPP_MIN * voc)
-      {
-        d -= MPPT_JUMP;                       /* passou do joelho: alivia a carga depressa */
-        mppt_dir[m] = -1;
-      }
-      else if (v > V_MPP_MAX * voc)
-      {
-        d += MPPT_JUMP;                       /* quase em aberto: aumenta a carga depressa */
-        mppt_dir[m] = 1;
-      }
-      else
-      {
-        if (p < last)                         /* perturba e observa */
-        {
-          mppt_dir[m] = (int8_t)-mppt_dir[m];
-        }
-        d += mppt_dir[m] * MPPT_STEP;
-      }
-      mppt_last_p[m] = p;
-      if (d < 0)
-      {
-        d = 0;
-        mppt_dir[m] = 1;
-      }
-      if (d > DUTY_MAX)
-      {
-        d = DUTY_MAX;
-        mppt_dir[m] = -1;
-      }
-      duty[m] = (uint16_t)d;
-    }
-    apply_duty();
-    if (cloud && (HAL_GetTick() - t_last_sweep) >= CLOUD_HOLD_MS)
-    {
-      sweep_request = 1;
-    }
-  }
-
-  /* Médias na ordem do firmware antigo: A0 A1 A5 A2 A6 A3 A7 A4 A8, 2 decimais */
-  static const uint8_t order[NCH] = {0, 1, 5, 2, 6, 3, 7, 4, 8};
-  char b[24];
-  for (int k = 0; k < NCH; k++)
-  {
-    uint64_t v100 = ((uint64_t)a[order[k]] * 100U + n / 2U) / n;
-    snprintf(b, sizeof(b), "%s%lu.%02lu", k ? " " : "",
-             (unsigned long)(v100 / 100U), (unsigned long)(v100 % 100U));
+    uint64_t m1000 = ((uint64_t)a->sum[c] * 1000U + a->n / 2U) / a->n;
+    snprintf(b, sizeof(b), " %lu.%03lu", (unsigned long)(m1000 / 1000U), (unsigned long)(m1000 % 1000U));
     tx_put(b);
   }
-  snprintf(b, sizeof(b), "\r\nG %u %u", duty[0], duty[1]);
-  tx_put(b);
-  snprintf(b, sizeof(b), " %u %u %c\r\n", duty[2], duty[3], mode);
+  for (int c = 0; c < NCH; c++)
+  {
+    double s = (double)a->sum[c];
+    double var = ((double)a->sumsq[c] - s * s / (double)a->n) / (double)(a->n - 1U);
+    uint32_t s100 = var > 0.0 ? (uint32_t)(sqrt(var) * 100.0 + 0.5) : 0U;
+    snprintf(b, sizeof(b), " %lu.%02lu", (unsigned long)(s100 / 100U), (unsigned long)(s100 % 100U));
+    tx_put(b);
+  }
+  tx_put("\r\n");
+  tx_flush();
+}
+
+static void send_info(void)
+{
+  char b[112];
+  snprintf(b, sizeof(b), "# QuadPV fw %s tipo=Isc-Voc modo=%c T=%lu fs=%lu perdidos=%lu\r\n",
+           QPV_FW_VERSION, mode, (unsigned long)voc_interval_s, (unsigned long)FS_HZ,
+           (unsigned long)lost);
   tx_put(b);
   tx_flush();
-  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-}
-
-/* ------------------------------------------------------------------ Varredura I-V */
-static int32_t irel(uint16_t i, uint16_t ref, int m)
-{
-  return (int32_t)i - (int32_t)ref - i_off_x16[m];
-}
-
-static void sweep(void)
-{
-  uint16_t pt[NCH];
-
-  /* Passada grossa: mesmo gate nos 4 módulos */
-  for (int k = 0; k < N_COARSE; k++)
-  {
-    uint16_t d = (k == N_COARSE - 1) ? DUTY_MAX : (uint16_t)(k * COARSE_STEP);
-    set_all(d);
-    measure_point(k == 0 ? SETTLE_JUMP_MS : SETTLE_MS, pt);
-    c_ref[k] = pt[0];
-    for (int m = 0; m < NMOD; m++)
-    {
-      c_i[m][k] = pt[1 + m];
-      c_v[m][k] = pt[5 + m];
-    }
-  }
-
-  /* Faixa útil de cada módulo */
-  for (int m = 0; m < NMOD; m++)
-  {
-    i_off_x16[m] = (int32_t)c_i[m][0] - (int32_t)c_ref[0];     /* MOSFET aberto: corrente nula */
-    int32_t isc = irel(c_i[m][N_COARSE - 1], c_ref[N_COARSE - 1], m);
-    int32_t isc_abs = isc < 0 ? -isc : isc;
-    float voc = (float)c_v[m][0];
-    int lo = 0, hi = N_COARSE - 1;
-    if (isc_abs > DARK_I_X16)
-    {
-      for (int k = 0; k < N_COARSE; k++)
-      {
-        int32_t ik = irel(c_i[m][k], c_ref[k], m);
-        if ((float)(ik < 0 ? -ik : ik) < FRAC_LO * (float)isc_abs)
-        {
-          lo = k;
-        }
-        else
-        {
-          break;
-        }
-      }
-      for (int k = lo + 1; k < N_COARSE; k++)
-      {
-        int32_t ik = irel(c_i[m][k], c_ref[k], m);
-        if ((float)(ik < 0 ? -ik : ik) >= FRAC_HI * (float)isc_abs || (float)c_v[m][k] < FRAC_V * voc)
-        {
-          hi = k + 1 < N_COARSE ? k + 1 : k;     /* um passo além, para incluir o joelho inteiro */
-          break;
-        }
-      }
-      if (hi <= lo)
-      {
-        hi = lo + 1;
-      }
-    }
-    f_lo[m] = (lo == N_COARSE - 1) ? DUTY_MAX : (uint16_t)(lo * COARSE_STEP);
-    f_hi[m] = (hi == N_COARSE - 1) ? DUTY_MAX : (uint16_t)(hi * COARSE_STEP);
-  }
-
-  /* Passada fina: QPV_NF pontos entre f_lo e f_hi de cada módulo, ao mesmo tempo */
-  for (int k = 0; k < QPV_NF; k++)
-  {
-    for (int m = 0; m < NMOD; m++)
-    {
-      duty[m] = (uint16_t)(f_lo[m] + ((uint32_t)(f_hi[m] - f_lo[m]) * (uint32_t)k) / (QPV_NF - 1));
-    }
-    apply_duty();
-    measure_point(k == 0 ? SETTLE_JUMP_MS : SETTLE_MS, pt);
-    f_ref[k] = pt[0];
-    for (int m = 0; m < NMOD; m++)
-    {
-      f_i[m][k] = pt[1 + m];
-      f_v[m][k] = pt[5 + m];
-    }
-  }
-
-  /* Ponto de máxima potência e faixa do MPPT */
-  for (int m = 0; m < NMOD; m++)
-  {
-    float best = -1.0f;
-    uint16_t best_d = f_lo[m];
-    for (int k = 0; k < QPV_NF; k++)
-    {
-      int32_t ik = irel(f_i[m][k], f_ref[k], m);
-      float p = (float)(ik < 0 ? -ik : ik) * (float)f_v[m][k];
-      if (p > best)
-      {
-        best = p;
-        best_d = (uint16_t)(f_lo[m] + ((uint32_t)(f_hi[m] - f_lo[m]) * (uint32_t)k) / (QPV_NF - 1));
-      }
-    }
-    voc_x16[m] = c_v[m][0];
-    if (mode == 'P')
-    {
-      duty[m] = best_d;
-    }
-  }
-  have_sweep = 1;
-  apply_mode();            /* volta ao modo: no MPPT, parte do ponto de máxima potência achado */
-
-  /* Envio: aberto (gate 0), passada fina, curto (gate 1023) */
-  char b[40];
-  for (int m = 0; m < NMOD; m++)
-  {
-    snprintf(b, sizeof(b), "IV %d %d", m + 1, QPV_NF + 2);
-    tx_put(b);
-    put_x16(c_ref[0]);
-    put_x16(c_i[m][0]);
-    put_x16(c_v[m][0]);
-    tx_put(" 0");
-    for (int k = 0; k < QPV_NF; k++)
-    {
-      put_x16(f_ref[k]);
-      put_x16(f_i[m][k]);
-      put_x16(f_v[m][k]);
-      snprintf(b, sizeof(b), " %u",
-               (unsigned)(f_lo[m] + ((uint32_t)(f_hi[m] - f_lo[m]) * (uint32_t)k) / (QPV_NF - 1)));
-      tx_put(b);
-    }
-    put_x16(c_ref[N_COARSE - 1]);
-    put_x16(c_i[m][N_COARSE - 1]);
-    put_x16(c_v[m][N_COARSE - 1]);
-    snprintf(b, sizeof(b), " %u\r\n", DUTY_MAX);
-    tx_put(b);
-    tx_flush();
-  }
 }
 
 /* ------------------------------------------------------------------ Comandos */
@@ -532,17 +342,30 @@ void QPV_OnUsbRx(const uint8_t *buf, uint32_t len)
 {
   for (uint32_t k = 0; k < len; k++)
   {
-    char ch = (char)buf[k];
-    if (rx_ready)
+    uint16_t next = (uint16_t)((rx_head + 1U) % RX_RING);
+    if (next == rx_tail)
     {
-      return;                                 /* comando anterior ainda não tratado */
+      return;                                 /* fila cheia: descarta o resto */
     }
+    rx_ring[rx_head] = buf[k];
+    rx_head = next;
+  }
+}
+
+/* Tira bytes da fila; devolve 1 quando uma linha completa está em rx_line */
+static uint8_t next_line(void)
+{
+  while (rx_tail != rx_head)
+  {
+    char ch = (char)rx_ring[rx_tail];
+    rx_tail = (uint16_t)((rx_tail + 1U) % RX_RING);
     if (ch == '\n' || ch == '\r')
     {
       if (rx_len > 0U)
       {
         rx_line[rx_len] = '\0';
-        rx_ready = 1;
+        rx_len = 0;
+        return 1;
       }
     }
     else if (rx_len < sizeof(rx_line) - 1U)
@@ -550,27 +373,12 @@ void QPV_OnUsbRx(const uint8_t *buf, uint32_t len)
       rx_line[rx_len++] = ch;
     }
   }
-}
-
-static void send_info(void)
-{
-  char b[96];
-  snprintf(b, sizeof(b), "# QuadPV fw %s modo=%c gate=%u T=%lu NF=%d\r\n",
-           QPV_FW_VERSION, mode, fixed_duty, (unsigned long)sweep_interval_s, QPV_NF);
-  tx_put(b);
-  tx_flush();
+  return 0;
 }
 
 static void handle_command(void)
 {
-  char line[sizeof(rx_line)];
-  __disable_irq();
-  strcpy(line, rx_line);
-  rx_len = 0;
-  rx_ready = 0;
-  __enable_irq();
-
-  char *p = line;
+  char *p = rx_line;
   while (*p == ' ')
   {
     p++;
@@ -580,10 +388,11 @@ static void handle_command(void)
     case '?':
       send_info();
       return;
-    case 'S':
-    case 's':
-      sweep_request = 1;
-      tx_put("# ok varredura\r\n");
+    case 'V':
+    case 'v':
+      voc_request = 1;
+      secs_since_voc = 0;
+      tx_put("# ok Voc\r\n");
       break;
     case 'T':
     case 't':
@@ -594,8 +403,8 @@ static void handle_command(void)
         tx_put("# erro: T deve ficar entre 0 e 86400 s\r\n");
         break;
       }
-      sweep_interval_s = (uint32_t)v;
-      t_last_sweep = HAL_GetTick();
+      voc_interval_s = (uint32_t)v;
+      secs_since_voc = 0;
       send_info();
       return;
     }
@@ -608,28 +417,18 @@ static void handle_command(void)
         q++;
       }
       char md = (char)(*q & ~0x20);           /* maiúscula */
-      if (md == 'F')
+      if (md != 'C' && md != 'O')
       {
-        long v = strtol(q + 1, NULL, 10);
-        if (v < 0 || v > DUTY_MAX)
-        {
-          tx_put("# erro: gate entre 0 e 1023\r\n");
-          break;
-        }
-        fixed_duty = (uint16_t)v;
-      }
-      else if (md != 'P' && md != 'O' && md != 'C')
-      {
-        tx_put("# erro: modos P, F d, O, C\r\n");
+        tx_put("# erro: modos C (curto, Isc) e O (aberto, Voc)\r\n");
         break;
       }
       mode = md;
-      apply_mode();
+      restart_request = 1;                    /* a interrupção troca os gates e recomeça o segundo */
       send_info();
       return;
     }
     default:
-      tx_put("# erro: comando desconhecido (?, S, T s, M P|F d|O|C)\r\n");
+      tx_put("# erro: comando desconhecido (?, V, T s, M C|O)\r\n");
       break;
   }
   tx_flush();
@@ -638,59 +437,57 @@ static void handle_command(void)
 /* ------------------------------------------------------------------ Laço */
 void QPV_Init(void)
 {
-  set_all(0);
-  if (HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1) != HAL_OK ||
-      HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2) != HAL_OK ||
-      HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3) != HAL_OK ||
-      HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  acc_reset(&acc, 'D');
+  gates_for_mode();
+  settle_left = SWITCH_SETTLE_BLK;
   if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_buf, DMA_SCANS * NCH) != HAL_OK)
+  if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_buf, 2U * BLOCK_SCANS * NCH) != HAL_OK)
   {
     Error_Handler();
   }
-  t_last_sec = HAL_GetTick();
-  t_last_sweep = t_last_sec;
-  /* primeira varredura 3 s depois de ligar (até lá o MPPT não tem faixa e o gate fica em 0) */
-  t_boot_sweep = t_last_sec + 3000U;
-  sweep_request = 1;
+  if (HAL_TIM_Base_Start(&htim3) != HAL_OK)       /* começa a disparar o ADC */
+  {
+    Error_Handler();
+  }
+  secs_since_voc = (voc_interval_s > FIRST_VOC_S) ? voc_interval_s - FIRST_VOC_S : 0U;
 }
 
 void QPV_Loop(void)
 {
-  uint32_t now = HAL_GetTick();
-
-  if (rx_ready)
+  while (next_line())
   {
     handle_command();
   }
 
-  if ((now - t_last_sec) >= 1000U)
+  if (ready_v_flag)
   {
-    t_last_sec += 1000U;
-    if ((now - t_last_sec) > 1000U)           /* atrasou (varredura): ressincroniza */
-    {
-      t_last_sec = now;
-    }
-    send_second();
+    Accum a;
+    __disable_irq();
+    a = ready_v;
+    ready_v_flag = 0;
+    __enable_irq();
+    send_accum(&a);
   }
 
-  if ((int32_t)(now - t_boot_sweep) < 0)
+  if (ready_d_flag)
   {
-    return;
-  }
-  if (sweep_request ||
-      (sweep_interval_s > 0U && (now - t_last_sweep) >= sweep_interval_s * 1000U))
-  {
-    sweep_request = 0;
-    sweep();
-    t_last_sweep = HAL_GetTick();
-    reset_sec();                              /* o segundo em curso misturou pontos da varredura */
-    t_last_sec = HAL_GetTick();
+    Accum a;
+    __disable_irq();
+    a = ready_d;
+    ready_d_flag = 0;
+    __enable_irq();
+    send_accum(&a);
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+
+    /* agenda a próxima janela de Voc */
+    secs_since_voc++;
+    if (voc_interval_s > 0U && secs_since_voc >= voc_interval_s)
+    {
+      secs_since_voc = 0;
+      voc_request = 1;
+    }
   }
 }

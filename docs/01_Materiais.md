@@ -4,24 +4,28 @@
 
 | Item | Qtd. | Observação |
 |---|---|---|
-| Blue Pill STM32F103C8T6 | 1 | ADC de 12 bits, 10 entradas analógicas (PA0–PA7, PB0, PB1) |
-| Sensor de corrente Hall WCS2702 (módulo) | 5 | 4 medem os módulos; 1 fica sem corrente e serve de referência (A0) |
-| N-MOS de nível lógico IRLZ44N (TO-220) | 4 | Carga eletrônica (firmware 2.x) |
-| Amplificador operacional MCP6002 (duplo, rail-to-rail) | 2 | Um para cada dois canais |
-| Resistores: 1 Ω 1 % 0,5 W; 10 kΩ; 1,1 kΩ; 1 kΩ; 100 Ω; 100 kΩ | 4 de cada | Ver [02](02_Hardware_e_Ligacoes.md#componentes-por-canal) |
-| Capacitores: 470 nF; 2,2 nF; 100 nF | 4; 4; 2 + 4 | Filtro da referência, compensação, desacoplamento |
-| Resistor de carga *(montagem original)* | 4 | Só na carga fixa. Valor e potência a registrar: *(a completar)* |
-| Módulos fotovoltaicos idênticos | 4 | Tensão de circuito aberto abaixo de 3,3 V (ver [02](02_Hardware_e_Ligacoes.md)) |
-| Cabo USB | 1 | Alimentação e dados |
-| Gravador ST-Link V2 *(opcional)* | 1 | Só se a placa não tiver bootloader USB |
+| Blue Pill STM32F103C8T6 | 1 | Cristal de 8 MHz |
+| MOSFET IRLZ44N (TO-220) | 4 | Chave de cada módulo |
+| Resistor 2 Ω, 1 %, 0,5 W, filme metálico (shunt) | 4 | Meça cada um com o multímetro e informe na interface |
+| Resistor 100 Ω (gate) | 4 | |
+| Resistor 100 kΩ (pull-down do gate) | 4 | Mantém o MOSFET desligado sem alimentação |
+| Resistor 1 kΩ (filtro do canal de corrente) | 4 | |
+| Resistor 470 kΩ (deslocamento do zero) | 4 | Do 3V3 à entrada de corrente |
+| Resistor 100 Ω (filtro do canal de tensão) | 4 | |
+| Capacitor 470 nF cerâmico X7R (filtro de corrente) | 4 | |
+| Capacitor 4,7 µF cerâmico X7R ou tântalo (filtro de tensão) | 4 | |
+| Capacitores 10 µF e 100 nF (desacoplamento do 3V3) | 1 de cada | Junto aos pinos 3V3/GND da Blue Pill |
+| Placa perfurada, bornes de 2 vias, barra de pinos fêmea | | Montagem |
+| Cabo par trançado | 4 pares | Dos módulos até a placa |
+| 4 módulos fotovoltaicos idênticos | 4 | Voc abaixo de 3,3 V |
+| Gravador ST-Link V2 *(opcional)* | 1 | Ou o bootloader serial com um adaptador USB-serial |
 
-*(a completar: fotos da montagem, fornecedores e custo aproximado.)*
+A lista de compras, com quantidades e colunas para preço, está na planilha "QuadPV - lista de compras" (pasta Claude/QuadPV no Google Drive).
 
 ## Software
 
 | Programa | Para quê |
 |---|---|
-| **STM32CubeIDE** (ou STM32CubeCLT + `make`) e **STM32CubeProgrammer** | Compilar e gravar o firmware 2.x (`firmware/quadpv_cube/`) |
-| Arduino IDE com o núcleo STM32duino *(só o firmware antigo)* | Gravar `firmware/pv/pv.ino` |
+| **STM32CubeIDE** (ou STM32CubeCLT + `make`) e **STM32CubeProgrammer** | Compilar e gravar o firmware |
 | Python 3.10 ou superior (Miniconda serve) | Rodar a interface |
 | `numpy`, `pyserial`, `pyqtgraph`, `PySide6` | Dependências da interface (`pip install -r requirements.txt`) |
