@@ -6,7 +6,6 @@ venv/
 build/
 dist/
 *.spec
-!packaging/*.spec
 
 # Medidas geradas pela interface (CSV, PNG, ZIP)
 Medidas/

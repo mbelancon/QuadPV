@@ -2,12 +2,60 @@
 
 Arquivos: [`interface/quadpv.py`](../interface/quadpv.py) (janela) e [`interface/quadpv_core.py`](../interface/quadpv_core.py) (protocolo, contas, serial e simulação). PySide6 (ou PyQt) + pyqtgraph, no mesmo padrão do SOI Controller.
 
-```powershell
+## Instalação e execução
+
+A interface roda com um Python já instalado no computador (3.10 ou mais novo). Ainda não há versão portátil.
+
+**Jeito mais simples:**
+- **Windows:** dois cliques em **`QuadPV.bat`**, na pasta principal do repositório.
+- **Linux e macOS:** `./quadpv.sh`.
+
+O script procura o Python nesta ordem e usa o primeiro que achar:
+
+| Ordem | Onde | Exemplo no Windows |
+|---|---|---|
+| 1 | Variável de ambiente `QUADPV_PYTHON` | `C:\Users\voce\miniconda3\envs\quadpv\python.exe` |
+| 2 | Ambiente virtual `.venv` na pasta do QuadPV | `.venv\Scripts\python.exe` |
+| 3 | Miniconda, Anaconda, Miniforge ou Mambaforge na pasta do usuário, em `%LOCALAPPDATA%`, em `%ProgramData%` ou em `C:\` | `C:\Users\voce\miniconda3\python.exe` |
+| 4 | Python oficial: lançador `py` e `%LOCALAPPDATA%\Programs\Python\Python3*` | `C:\Users\voce\AppData\Local\Programs\Python\Python312\python.exe` |
+| 5 | `python` do PATH | |
+
+No Linux e no macOS a ordem é a mesma, com `~/miniconda3`, `~/anaconda3`, `~/miniforge3`, `~/mambaforge`, `/opt/miniconda3`, `/opt/anaconda3` e por fim `python3`/`python`.
+
+Ao usar o Miniconda ou o Anaconda sem ativar o ambiente, o `QuadPV.bat` põe as pastas de bibliotecas dele (`Library\bin`, `Scripts`) no PATH, para as DLLs serem encontradas.
+
+Se faltar alguma biblioteca, o script pergunta se pode rodar `pip install -r requirements.txt` com o Python escolhido. Isso é feito uma vez só.
+
+**Ambiente separado (recomendado se você usa o Python para outras coisas):**
+
+```bash
+conda create -n quadpv python=3.12
+conda activate quadpv
+pip install -r requirements.txt
+```
+
+Depois aponte o lançador para ele (Windows, uma vez, no Prompt de Comando):
+
+```bat
+setx QUADPV_PYTHON "%USERPROFILE%\miniconda3\envs\quadpv\python.exe"
+```
+
+Sem conda, um ambiente virtual na própria pasta é encontrado sozinho:
+
+```bash
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt      # Windows
+.venv/bin/pip install -r requirements.txt          # Linux/macOS
+```
+
+No Linux, distribuições recentes bloqueiam o `pip install` no Python do sistema; nesse caso use o `.venv` acima.
+
+**Manualmente**, com qualquer Python que tenha as bibliotecas:
+
+```bash
 pip install -r requirements.txt
 python interface/quadpv.py
 ```
-
-O executável para Windows pode ser gerado como no SOI (spec em [`packaging/`](../packaging/) e workflow do GitHub Actions).
 
 ## Conexão
 

@@ -11,6 +11,10 @@
   15 min, calibração dos módulos em condição idêntica, ΔT estimado pela Voc com desconto do efeito da
   luz, aba de diagnóstico de ruído, gravação de Isc e Voc em dois CSV, simulação do firmware novo,
   identificação da placa (recusa outras placas e avisa firmware incompatível).
+- Lançadores `QuadPV.bat` (Windows) e `quadpv.sh` (Linux/macOS): acham o Miniconda, o Anaconda ou outro
+  Python já instalado e oferecem instalar as bibliotecas que faltarem. Sem versão portátil por enquanto
+  (o empacotamento com PyInstaller foi retirado).
+- Repositório renomeado de SolarPower para QuadPV.
 - A versão com carga eletrônica (curvas I–V e MPPT) ficou no branch `carga-eletronica`.
 
 ## 2.0.0 – nome QuadPV, carga eletrônica, firmware STM32Cube, interface nova (branch `carga-eletronica`)

@@ -44,14 +44,13 @@ Detalhes, valores e cuidados de montagem em [docs/02_Hardware_e_Ligacoes.md](doc
 
 1. Monte o hardware conforme [docs/02_Hardware_e_Ligacoes.md](docs/02_Hardware_e_Ligacoes.md).
 2. Compile e grave [`firmware/quadpv_cube/`](firmware/quadpv_cube/) (STM32Cube) com o STM32CubeIDE, ou com `make flash` e um ST-Link ([docs/03_Firmware.md](docs/03_Firmware.md)).
-3. Instale as dependências da interface (Python 3.10 ou superior; com o Miniconda, no Anaconda Prompt):
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Conecte a placa pelo USB e rode:
-   ```bash
-   python interface/quadpv.py
-   ```
+3. Baixe o repositório (*Code > Download ZIP*, ou `git clone https://github.com/mbelancon/QuadPV`).
+4. Conecte a placa pelo USB e abra a interface:
+   - **Windows:** dê dois cliques em **`QuadPV.bat`**.
+   - **Linux/macOS:** rode `./quadpv.sh`.
+
+   O script procura um Python 3.10 ou mais novo já instalado, como Miniconda, Anaconda ou o Python oficial. Se faltar alguma biblioteca (numpy, pyserial, pyqtgraph, PySide6), ele oferece instalar com o pip. Não é preciso instalar nada além do Python. Detalhes e a instalação manual em [docs/04_Interface.md](docs/04_Interface.md#instalação-e-execução).
+
    A placa é encontrada sozinha, como no SOI: a interface procura o STM32 (USB VID 0x0483) e confirma com o comando `?` que é um QuadPV, então o SOI pode ficar ligado no mesmo PC. Sem a placa, marque **Simular medidas**.
 5. Em *Configurar módulos…*, informe nomes, áreas e o valor medido de cada shunt.
 6. **Calibre:** deixe os quatro módulos na mesma condição (mesma cobertura, ou nenhuma) por alguns minutos e clique em **Calibrar módulos…**.
@@ -70,6 +69,8 @@ Detalhes, valores e cuidados de montagem em [docs/02_Hardware_e_Ligacoes.md](doc
 ## Estrutura do repositório
 
 ```
+├── QuadPV.bat               Abre a interface no Windows (procura Miniconda, Anaconda ou outro Python)
+├── quadpv.sh                O mesmo para Linux e macOS
 ├── interface/
 │   ├── quadpv.py            Interface (PySide6/PyQt + pyqtgraph)
 │   └── quadpv_core.py       Protocolo, conversão, calibração, serial e simulação (sem interface gráfica)
@@ -77,8 +78,6 @@ Detalhes, valores e cuidados de montagem em [docs/02_Hardware_e_Ligacoes.md](doc
 ├── firmware/teste_host/     O mesmo firmware rodando no PC contra um modelo (teste sem placa)
 ├── firmware/pv/pv.ino       Firmware original (Arduino), só como referência
 ├── docs/                    Documentação
-├── packaging/               Spec e dependências do PyInstaller (executável Windows)
-├── .github/workflows/       Geração automática do executável nas Releases
 ├── legado/pv-stm32.py       Interface original (Tkinter), só como referência
 ├── CHANGELOG.md             Histórico de versões
 └── requirements.txt         Dependências Python
