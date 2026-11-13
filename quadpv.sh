@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # ==========================================================================
-#  QuadPV - abre a interface com um Python já instalado (Linux e macOS).
+#  QuadPV - opens the interface with a Python already installed (Linux and macOS).
 #
-#  Procura, nesta ordem: a variável QUADPV_PYTHON, um ambiente virtual .venv
-#  nesta pasta, Miniconda/Anaconda/Miniforge na pasta do usuário e em /opt,
-#  e por fim python3/python do PATH. Exige Python 3.10 ou mais novo. Se faltar
-#  alguma biblioteca, oferece instalar com "pip install -r requirements.txt".
+#  Looks, in this order, for: the QUADPV_PYTHON variable, a .venv virtual environment
+#  in this folder, Miniconda/Anaconda/Miniforge in the user folder and in /opt,
+#  and finally python3/python on the PATH. Requires Python 3.10 or newer. If a
+#  library is missing, offers to install it with "pip install -r requirements.txt".
 # ==========================================================================
 cd "$(dirname "$0")" || exit 1
 HERE="$(pwd)"
 
-ok() {   # ok <python>: existe e é 3.10 ou mais novo?
+ok() {   # ok <python>: does it exist and is it 3.10 or newer?
     [ -n "$1" ] && command -v "$1" >/dev/null 2>&1 &&
         "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1
 }
@@ -25,24 +25,24 @@ for cand in "${QUADPV_PYTHON:-}" "$HERE/.venv/bin/python" \
 done
 
 if [ -z "$PY" ]; then
-    echo "Nenhum Python 3.10 ou mais novo foi encontrado."
-    echo "Instale o Miniconda (https://docs.conda.io/projects/miniconda) ou o Python do sistema,"
-    echo "ou defina QUADPV_PYTHON com o caminho do python."
+    echo "No Python 3.10 or newer was found."
+    echo "Install Miniconda (https://docs.conda.io/projects/miniconda) or the system Python,"
+    echo "or set QUADPV_PYTHON to the path of the python executable."
     exit 1
 fi
 echo "Python: $(command -v "$PY")"
 
 if ! "$PY" -c 'import numpy, serial, pyqtgraph; from pyqtgraph.Qt import QtCore' >/dev/null 2>&1; then
-    echo "Faltam bibliotecas para a interface: numpy, pyserial, pyqtgraph e PySide6."
-    read -r -p "Instalar agora com pip? [s/N] " ans
+    echo "Libraries missing for the interface: numpy, pyserial, pyqtgraph and PySide6."
+    read -r -p "Install them now with pip? [y/N] " ans
     case "$ans" in
-        s|S|y|Y) ;;
+        y|Y|s|S) ;;
         *) exit 1 ;;
     esac
     if ! "$PY" -m pip install -r "$HERE/requirements.txt"; then
         echo
-        echo "A instalação falhou. Em distribuições que bloqueiam o pip do sistema, crie um ambiente"
-        echo "virtual nesta pasta (este script passa a usá-lo sozinho):"
+        echo "The installation failed. On distributions that block the system pip, create a virtual"
+        echo "environment in this folder (this script will then use it automatically):"
         echo "    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
         exit 1
     fi

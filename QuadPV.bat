@@ -1,16 +1,16 @@
 @echo off
 rem ==========================================================================
-rem  QuadPV - abre a interface com um Python ja instalado no computador.
+rem  QuadPV - opens the interface with a Python already installed on the computer.
 rem
-rem  Procura, nesta ordem:
-rem    1. a variavel de ambiente QUADPV_PYTHON (caminho completo do python.exe)
-rem    2. um ambiente virtual .venv nesta pasta
-rem    3. Miniconda / Anaconda / Miniforge na pasta do usuario, em %LOCALAPPDATA%,
-rem       em %ProgramData% e em C:\
-rem    4. o Python oficial (lancador "py" e %LOCALAPPDATA%\Programs\Python)
-rem    5. o "python" do PATH
-rem  Exige Python 3.10 ou mais novo. Se faltar alguma biblioteca, oferece instalar
-rem  com "pip install -r requirements.txt".
+rem  Looks, in this order, for:
+rem    1. the QUADPV_PYTHON environment variable (full path to python.exe)
+rem    2. a .venv virtual environment in this folder
+rem    3. Miniconda / Anaconda / Miniforge in the user folder, in %LOCALAPPDATA%,
+rem       in %ProgramData% and in C:\
+rem    4. the official Python ("py" launcher and %LOCALAPPDATA%\Programs\Python)
+rem    5. "python" on the PATH
+rem  Requires Python 3.10 or newer. If a library is missing, offers to install
+rem  it with "pip install -r requirements.txt".
 rem ==========================================================================
 setlocal EnableExtensions
 cd /d "%~dp0"
@@ -35,16 +35,16 @@ if not defined PY (
 
 if not defined PY (
     echo.
-    echo Nenhum Python 3.10 ou mais novo foi encontrado.
-    echo Instale o Miniconda ^(https://docs.conda.io/projects/miniconda^) ou o Python ^(https://www.python.org^)
-    echo e rode este arquivo de novo. Se o Python estiver em outro lugar, defina a variavel
-    echo QUADPV_PYTHON com o caminho completo do python.exe.
+    echo No Python 3.10 or newer was found.
+    echo Install Miniconda ^(https://docs.conda.io/projects/miniconda^) or Python ^(https://www.python.org^)
+    echo and run this file again. If Python is somewhere else, set the QUADPV_PYTHON
+    echo variable to the full path of python.exe.
     echo.
     pause
     exit /b 1
 )
 
-rem Bibliotecas do Miniconda/Anaconda (DLLs) precisam estar no PATH quando o base nao foi ativado.
+rem Miniconda/Anaconda libraries (DLLs) must be on the PATH when the base environment was not activated.
 for %%F in ("%PY%") do set "PYDIR=%%~dpF"
 set "PATH=%PYDIR%;%PYDIR%Library\bin;%PYDIR%Scripts;%PATH%"
 echo Python: %PY%
@@ -52,13 +52,13 @@ echo Python: %PY%
 "%PY%" -c "import numpy, serial, pyqtgraph; from pyqtgraph.Qt import QtCore" >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo Faltam bibliotecas para a interface: numpy, pyserial, pyqtgraph e PySide6.
-    choice /c SN /m "Instalar agora com pip"
+    echo Libraries missing for the interface: numpy, pyserial, pyqtgraph and PySide6.
+    choice /c YN /m "Install them now with pip"
     if errorlevel 2 exit /b 1
     "%PY%" -m pip install -r "%~dp0requirements.txt"
     if errorlevel 1 (
         echo.
-        echo A instalacao falhou. Veja a mensagem acima.
+        echo The installation failed. See the message above.
         pause
         exit /b 1
     )
@@ -67,13 +67,13 @@ if errorlevel 1 (
 "%PY%" "%~dp0interface\quadpv.py" %*
 if errorlevel 1 (
     echo.
-    echo A interface terminou com erro. Veja a mensagem acima.
+    echo The interface exited with an error. See the message above.
     pause
 )
 exit /b
 
 rem --------------------------------------------------------------------------
-rem :try caminho  -  aceita o python se ele existir e for 3.10 ou mais novo
+rem :try path  -  accepts the python if it exists and is 3.10 or newer
 :try
 if defined PY goto :eof
 if not exist "%~1" goto :eof

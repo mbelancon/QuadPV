@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 '''
-QuadPV - núcleo sem interface gráfica: protocolo do firmware 3.x, conversão das contagens,
-calibração, estimativa de temperatura, comunicação serial e simulação.
+QuadPV - core without GUI: firmware 3.x protocol, count conversion, calibration,
+temperature estimate, serial communication and simulation.
 
-O firmware manda uma linha por segundo e uma por janela de Voc:
+The firmware sends one line per second and one per Voc window:
 
-    D n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 ... s9     módulos em curto (Isc)
-    V n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 ... s9     módulos em aberto (Voc)
+    D n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 ... s9     modules shorted (Isc)
+    V n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 ... s9     modules open (Voc)
 
-n = varreduras promediadas (6000 por segundo, 400 na janela de Voc); m = modo (C/O);
-a = tensão nos shunts, v = tensão dos módulos, r = Vrefint, s = desvio-padrão de uma amostra
-de cada canal; tudo em contagens do ADC de 12 bits.
+n = averaged scans (6000 per second, 400 in the Voc window); m = mode (C/O);
+a = shunt voltages, v = module voltages, r = Vrefint, s = standard deviation of a single sample
+of each channel; all in 12-bit ADC counts.
 '''
 import math
 import os
@@ -22,7 +22,7 @@ import numpy as np
 import serial
 from serial.tools import list_ports
 
-__version__ = '3.0.0'
+__version__ = '3.0.1'
 
 N_CELLS = 4
 ADC_COUNTS = 4096.0
@@ -33,14 +33,14 @@ BAUD_RATE = 115200
 RECONNECT_INTERVAL = 3.0
 IDENTIFY_TIMEOUT = 2.5
 REJECT_HOLD = 30.0
-K_B_OVER_Q = 8.617333262e-2       # mV/K (constante de Boltzmann / carga elementar)
+K_B_OVER_Q = 8.617333262e-2       # mV/K (Boltzmann constant / elementary charge)
 
 Msg = namedtuple('Msg', 'kind t data')
-# kind 'D' ou 'V': data = Reading; '#': data = texto
+# kind 'D' or 'V': data = Reading; '#': data = text
 
 
 class Reading:
-    '''Uma linha D ou V já separada em canais (contagens).'''
+    '''A D or V line split into channels (counts).'''
     __slots__ = ('kind', 'n', 'mode', 'a', 'v', 'r', 'sa', 'sv', 'sr')
 
     def __init__(self, kind, n, mode, vals, sig):
@@ -50,7 +50,7 @@ class Reading:
 
 
 def parse_message(line, t):
-    '''Uma linha recebida -> Msg, ou None se não for reconhecida.'''
+    '''A received line -> Msg, or None if not recognized.'''
     if isinstance(line, (bytes, bytearray)):
         line = line.decode('ascii', 'ignore')
     s = line.strip()
@@ -73,7 +73,7 @@ def parse_message(line, t):
 
 
 def looks_like_old_firmware(line):
-    '''Linhas dos firmwares antigos (médias sem prefixo, G, IV): placa certa, firmware errado.'''
+    '''Lines from old firmwares (unprefixed averages, G, IV): right board, wrong firmware.'''
     s = line.decode('ascii', 'ignore').strip() if isinstance(line, (bytes, bytearray)) else line.strip()
     if s.startswith(('G ', 'IV ')):
         return True
@@ -88,7 +88,7 @@ def looks_like_old_firmware(line):
 
 
 def fw_info(text):
-    '''"QuadPV fw 3.0.0 tipo=Isc-Voc modo=C T=60 ..." -> dict, ou None se não for do QuadPV.'''
+    '''"QuadPV fw 3.0.0 tipo=Isc-Voc modo=C T=60 ..." -> dict, or None if it is not from a QuadPV.'''
     tok = text.split()
     if len(tok) < 3 or tok[0] != 'QuadPV' or tok[1] != 'fw':
         return None
@@ -101,28 +101,28 @@ def fw_info(text):
 
 
 # ----------------------------------------------------------------------------
-# Configuração e conversão
+# Configuration and conversion
 # ----------------------------------------------------------------------------
 class Config:
     def __init__(self):
-        self.names = [f'Módulo {i + 1}' for i in range(N_CELLS)]
-        self.area_cm2 = [0.0] * N_CELLS          # 0 = não informada
-        self.r_shunt = [2.0] * N_CELLS           # ohm (meça com o multímetro)
-        self.div = [1.0] * N_CELLS               # divisor da tensão (1 = direto)
-        self.use_vrefint = True                  # tensão do ADC pela Vrefint (senão, fixa)
-        self.vref_mv = 3300.0                    # tensão do ADC, se fixa
-        self.vrefint_mv = 1200.0                 # Vrefint (1,16 a 1,24 V; calibrável)
-        self.ns = 4                              # células em série por módulo
-        self.ideality = 1.3                      # fator de idealidade (estimativa de ΔT)
-        self.t_mod_c = 45.0                      # temperatura típica dos módulos (estimativa de ΔT)
-        self.dvdt_cell = -2.2                    # mV/K por célula de silício
+        self.names = [f'Module {i + 1}' for i in range(N_CELLS)]
+        self.area_cm2 = [0.0] * N_CELLS          # 0 = not given
+        self.r_shunt = [2.0] * N_CELLS           # ohm (measure with a multimeter)
+        self.div = [1.0] * N_CELLS               # voltage divider (1 = direct)
+        self.use_vrefint = True                  # ADC supply from Vrefint (otherwise fixed)
+        self.vref_mv = 3300.0                    # ADC supply, if fixed
+        self.vrefint_mv = 1200.0                 # Vrefint (1.16 to 1.24 V; can be calibrated)
+        self.ns = 4                              # cells in series per module
+        self.ideality = 1.3                      # ideality factor (ΔT estimate)
+        self.t_mod_c = 45.0                      # typical module temperature (ΔT estimate)
+        self.dvdt_cell = -2.2                    # mV/K per silicon cell
         self.ref_cell = 0
-        self.cal_isc = [1.0] * N_CELLS           # Isc_i / Isc_ref em condição idêntica
-        self.cal_voc = [0.0] * N_CELLS           # Voc_i - Voc_ref em condição idêntica (mV)
-        self.cal_time = ''                       # quando a calibração foi feita
+        self.cal_isc = [1.0] * N_CELLS           # Isc_i / Isc_ref under identical conditions
+        self.cal_voc = [0.0] * N_CELLS           # Voc_i - Voc_ref under identical conditions (mV)
+        self.cal_time = ''                       # when the calibration was done
 
     def k_mv(self, r):
-        '''mV por contagem: pela Vrefint medida, ou pela tensão fixa.'''
+        '''mV per count: from the measured Vrefint, or from the fixed supply.'''
         if self.use_vrefint and r > 100:
             return self.vrefint_mv / r
         return self.vref_mv / ADC_COUNTS
@@ -131,25 +131,25 @@ class Config:
         return any(abs(c - 1.0) > 1e-9 for c in self.cal_isc) or any(abs(c) > 1e-9 for c in self.cal_voc)
 
     def header_lines(self):
-        lines = [f'ADC: {"Vrefint=%g mV" % self.vrefint_mv if self.use_vrefint else "Vref fixa=%g mV" % self.vref_mv}; '
-                 f'{self.ns} celulas em serie; idealidade={self.ideality:g}; T modulo tipica={self.t_mod_c:g} C; '
-                 f'dVoc/dT={self.dvdt_cell:g} mV/K por celula; referencia: modulo {self.ref_cell + 1}']
+        lines = [f'ADC: {"Vrefint=%g mV" % self.vrefint_mv if self.use_vrefint else "fixed Vref=%g mV" % self.vref_mv}; '
+                 f'{self.ns} cells in series; ideality={self.ideality:g}; typical module T={self.t_mod_c:g} C; '
+                 f'dVoc/dT={self.dvdt_cell:g} mV/K per cell; reference: module {self.ref_cell + 1}']
         for i in range(N_CELLS):
-            lines.append(f'Modulo {i + 1}: nome="{self.names[i]}", area={self.area_cm2[i]:g} cm2, '
-                         f'shunt={self.r_shunt[i]:g} ohm, divisor={self.div[i]:g}, '
-                         f'calibracao Isc={self.cal_isc[i]:.5f}, Voc={self.cal_voc[i]:+.2f} mV')
-        lines.append(f'Calibracao dos modulos: {self.cal_time or "nenhuma"}')
+            lines.append(f'Module {i + 1}: name="{self.names[i]}", area={self.area_cm2[i]:g} cm2, '
+                         f'shunt={self.r_shunt[i]:g} ohm, divider={self.div[i]:g}, '
+                         f'calibration Isc={self.cal_isc[i]:.5f}, Voc={self.cal_voc[i]:+.2f} mV')
+        lines.append(f'Module calibration: {self.cal_time or "none"}')
         return lines
 
 
 def convert(rd, cfg, offsets):
-    '''Reading -> dict com corrente (mA), tensões (mV), VDDA e incerteza da média da corrente.
-    offsets = contagens dos shunts sem corrente (janela de Voc).'''
+    '''Reading -> dict with current (mA), voltages (mV), VDDA and uncertainty of the mean current.
+    offsets = shunt counts with no current (Voc window).'''
     k = cfg.k_mv(rd.r)
     rs = np.asarray(cfg.r_shunt)
-    i_raw = (rd.a - offsets) * k / rs                       # mA, sem a calibração dos módulos
+    i_raw = (rd.a - offsets) * k / rs                       # mA, without the module calibration
     v = rd.v * k * np.asarray(cfg.div)
-    i_err = rd.sa / math.sqrt(rd.n) * k / rs                # erro padrão da média (mA)
+    i_err = rd.sa / math.sqrt(rd.n) * k / rs                # standard error of the mean (mA)
     return {'i_raw': i_raw, 'i': i_raw / np.asarray(cfg.cal_isc), 'v': v, 'vdda': k * ADC_COUNTS,
             'i_err': i_err, 'k': k}
 
@@ -159,8 +159,8 @@ def vt_mv(cfg):
 
 
 def delta_t(voc, isc, cfg):
-    '''ΔT de cada módulo em relação ao de referência, pela diferença de Voc descontado o efeito da luz:
-       ΔVoc = Ns·n·Vt·ln(Isc_i/Isc_ref) + Ns·(dVoc/dT)·ΔT   ->   ΔT = (ΔVoc - parte da luz) / (Ns·dVoc/dT)'''
+    '''ΔT of each module relative to the reference one, from the Voc difference minus the effect of light:
+       ΔVoc = Ns·n·Vt·ln(Isc_i/Isc_ref) + Ns·(dVoc/dT)·ΔT   ->   ΔT = (ΔVoc - light part) / (Ns·dVoc/dT)'''
     ref = cfg.ref_cell
     voc_c = np.asarray(voc) - np.asarray(cfg.cal_voc)
     isc = np.asarray(isc, dtype=float)
@@ -173,10 +173,10 @@ def delta_t(voc, isc, cfg):
 
 
 # ----------------------------------------------------------------------------
-# Armazenamento
+# Storage
 # ----------------------------------------------------------------------------
 class Series:
-    '''Arrays que crescem por blocos (uma linha por leitura).'''
+    '''Arrays that grow in blocks (one row per reading).'''
 
     def __init__(self, cols):
         self.cols = cols
@@ -210,7 +210,7 @@ class Series:
 
 
 def trailing_mean(y, w):
-    '''Média móvel das últimas w amostras (ignora NaN); mesma forma de y.'''
+    '''Trailing mean of the last w samples (ignores NaN); same shape as y.'''
     if w <= 1 or len(y) == 0:
         return y.copy()
     y = np.asarray(y, dtype=float)
@@ -228,7 +228,7 @@ def trailing_mean(y, w):
 
 
 def window_stats(y, w):
-    '''Média e erro padrão (desvio/√N) das últimas w linhas de y (n x 4), ignorando NaN.'''
+    '''Mean and standard error (std/√N) of the last w rows of y (n x 4), ignoring NaN.'''
     if len(y) == 0:
         return np.full(N_CELLS, np.nan), np.full(N_CELLS, np.nan)
     tail = y[-w:]
@@ -241,12 +241,12 @@ def window_stats(y, w):
 
 
 # ----------------------------------------------------------------------------
-# Serial em thread
+# Serial port in a thread
 # ----------------------------------------------------------------------------
 def candidate_ports(preferred=None):
-    '''Portas a testar, em ordem (igual ao SOI): a escolhida pelo usuário (só ela, se escolhida),
-    a variável QUADPV_PORT, um dispositivo chamado "QuadPV", os STM32 (VID 0x0483), outras placas
-    conhecidas e, se houver uma só porta USB, ela. A identidade é confirmada depois com "?".'''
+    '''Ports to try, in order (as in the SOI): the one chosen by the user (only it, if chosen),
+    the QUADPV_PORT variable, a device named "QuadPV", STM32 devices (VID 0x0483), other known
+    boards and, if there is a single USB port, that one. The identity is then confirmed with "?".'''
     ports = list(list_ports.comports())
     names = {p.device.upper(): p.device for p in ports}
     if preferred:
@@ -278,7 +278,7 @@ def candidate_ports(preferred=None):
 
 
 class SerialLink(threading.Thread):
-    '''Procura a placa, confirma que é um QuadPV (firmware 3.x), lê as linhas e reconecta sozinha.'''
+    '''Finds the board, confirms it is a QuadPV (firmware 3.x), reads lines and reconnects by itself.'''
 
     def __init__(self):
         super().__init__(daemon=True)
@@ -289,7 +289,7 @@ class SerialLink(threading.Thread):
         self.last_error = None
         self.bad_lines = 0
         self.fw = None
-        self.identity = None           # 'QuadPV', 'incompatível' ou 'não confirmada'
+        self.identity = None           # 'QuadPV', 'incompatible' or 'unconfirmed'
         self._rejected = {}
         self._msgs = deque(maxlen=20000)
         self._buf = bytearray()
@@ -313,7 +313,7 @@ class SerialLink(threading.Thread):
                 ser.write((text.strip() + '\n').encode('ascii'))
                 return True
             except Exception as e:
-                self.last_error = f'Erro ao escrever: {e}'
+                self.last_error = f'Write error: {e}'
                 self._close_locked()
                 return False
 
@@ -385,11 +385,11 @@ class SerialLink(threading.Thread):
                 break
         if fw is not None:
             ok = fw['version'].split('.')[0] == '3'
-            return ('QuadPV' if ok else 'incompatível'), fw, early
+            return ('QuadPV' if ok else 'incompatible'), fw, early
         if data_seen:
             return 'QuadPV', None, early
         if old:
-            return 'incompatível', None, early
+            return 'incompatible', None, early
         return None, None, early
 
     def _try_connect(self):
@@ -401,12 +401,12 @@ class SerialLink(threading.Thread):
             cands = [p for p in cands if p not in skipped]
         if not cands:
             if self.preferred:
-                self.last_error = f'Porta {self.preferred} não encontrada.'
+                self.last_error = f'Port {self.preferred} not found.'
             elif skipped:
-                self.last_error = (f'Placa(s) em {", ".join(skipped)} não responderam como QuadPV '
-                                   '(outra placa, como o SOI?). Procurando de novo…')
+                self.last_error = (f'Board(s) on {", ".join(skipped)} did not answer as a QuadPV '
+                                   '(another board, such as the SOI?). Searching again…')
             else:
-                self.last_error = 'Nenhuma placa QuadPV encontrada (procurando STM32, USB VID 0x0483).'
+                self.last_error = 'No QuadPV board found (looking for STM32, USB VID 0x0483).'
             return
         for port in cands:
             if self._stop_evt.is_set():
@@ -423,11 +423,11 @@ class SerialLink(threading.Thread):
                 if identity is None and not self.preferred:
                     ser.close()
                     self._rejected[port] = time.monotonic() + REJECT_HOLD
-                    self.last_error = f'{port} não respondeu como QuadPV (outra placa?)'
+                    self.last_error = f'{port} did not answer as a QuadPV (another board?)'
                     continue
                 with self._wlock:
                     self.ser, self.port, self.connected = ser, port, True
-                    self.fw, self.identity = fw, identity or 'não confirmada'
+                    self.fw, self.identity = fw, identity or 'unconfirmed'
                     self.last_error = None
                 with self._lock:
                     self._msgs.extend(early)
@@ -467,37 +467,37 @@ class SerialLink(threading.Thread):
             if data:
                 msgs, old = self._feed(data)
                 if old and self.identity != 'QuadPV':
-                    self.identity = 'incompatível'
+                    self.identity = 'incompatible'
                 for msg in msgs:
                     if msg.kind == '#' and fw_info(msg.data):
                         self.fw = fw_info(msg.data)
-                        self.identity = 'QuadPV' if self.fw['version'].startswith('3') else 'incompatível'
+                        self.identity = 'QuadPV' if self.fw['version'].startswith('3') else 'incompatible'
                 if msgs:
                     with self._lock:
                         self._msgs.extend(msgs)
 
 
 # ----------------------------------------------------------------------------
-# Simulação: imita o firmware 3.x
+# Simulation: mimics firmware 3.x
 # ----------------------------------------------------------------------------
 class Simulator:
-    '''Quatro módulos pequenos (4 células, Isc ~120 mA, Voc ~2,4 V) sob um "dia" de 20 min com
-    nuvens. As coberturas têm transmitâncias diferentes (TRANS) e aquecem os módulos de forma
-    diferente (DT_COVER, a 1000 W/m²). Os módulos não são exatamente iguais (MISMATCH_I/V), o que
-    a calibração em condição idêntica corrige. Gera as mesmas linhas do firmware, em contagens,
-    com o ruído de uma média de 6000 varreduras.'''
+    '''Four small modules (4 cells, Isc ~120 mA, Voc ~2.4 V) under a 20-min "day" with clouds.
+    The covers have different transmittances (TRANS) and heat the modules differently
+    (DT_COVER, at 1000 W/m²). The modules are not exactly equal (MISMATCH_I/V), which the
+    calibration under identical conditions corrects. Produces the same lines as the firmware,
+    in counts, with the noise of a 6000-scan average.'''
 
     TRANS = (1.00, 0.97, 0.93, 1.02)
-    DT_COVER = (0.0, 1.0, 2.5, -0.5)          # K a mais que o módulo 1, a 1000 W/m²
+    DT_COVER = (0.0, 1.0, 2.5, -0.5)          # K above module 1, at 1000 W/m²
     MISMATCH_I = (1.000, 1.012, 0.991, 1.004)
     MISMATCH_V = (0.0, 3.0, -2.0, 1.0)        # mV
-    OFFSETS = (10.5, 7.5, 9.3, 11.1)          # contagens dos shunts sem corrente (com o 470 k)
+    OFFSETS = (10.5, 7.5, 9.3, 11.1)          # shunt counts with no current (with the 470 k)
     ISC0, VOC0, NS, N_ID = 120.0, 2400.0, 4, 1.3
     R_SHUNT, R_ON = 2.0, 0.02
 
     def __init__(self, seed=None):
         self.rng = np.random.default_rng(seed)
-        self.identical = False                 # True: todos com a mesma cobertura (para calibrar)
+        self.identical = False                 # True: all with the same cover (for calibration)
         self.reset()
 
     def reset(self):
@@ -557,8 +557,8 @@ class Simulator:
 
     def _line(self, t, kind, n, mode, a, v):
         kmv = self.vdd / ADC_COUNTS
-        r = 1200.0 / kmv                                    # Vrefint de 1,20 V em contagens
-        sd_mean = 2.0 / math.sqrt(n)                        # ruído de uma média de n varreduras
+        r = 1200.0 / kmv                                    # 1.20 V Vrefint in counts
+        sd_mean = 2.0 / math.sqrt(n)                        # noise of an n-scan average
         a = np.asarray(a) + self.rng.normal(0, sd_mean, 4)
         v = np.asarray(v) + self.rng.normal(0, sd_mean, 4)
         r = r + self.rng.normal(0, 1.0 / math.sqrt(n))
@@ -571,7 +571,7 @@ class Simulator:
         if t < self.next_sec:
             return msgs
         self.next_sec = t + 1.0
-        self.vdd = 3300.0 + 6.0 * math.sin((t - self.t0) / 300.0)       # deriva lenta do 3,3 V
+        self.vdd = 3300.0 + 6.0 * math.sin((t - self.t0) / 300.0)       # slow drift of the 3.3 V supply
         kmv = self.vdd / ADC_COUNTS
         isc, voc = self._state(t)
         off = np.array(self.OFFSETS)
@@ -581,7 +581,7 @@ class Simulator:
             self.voc_now = False
             self.since_voc = 0
             msgs.append(self._line(t, 'V', 400, 'O', off, voc / kmv))
-            return msgs                                                   # segundo sem linha D
+            return msgs                                                   # second without a D line
         self.since_voc += 1
         if self.mode == 'O':
             msgs.append(self._line(t, 'D', 6000, 'O', off, voc / kmv))

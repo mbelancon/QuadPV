@@ -1,63 +1,63 @@
 # 3. Firmware
 
-Pasta: [`firmware/quadpv_cube/`](../firmware/quadpv_cube/), em STM32Cube HAL. Ocupa ~27 KB de flash e ~8 KB de RAM.
+Folder: [`firmware/quadpv_cube/`](../firmware/quadpv_cube/), STM32Cube HAL. Uses ~27 KB of flash and ~8 KB of RAM. The source comments are in Portuguese.
 
-## Estrutura
+## Layout
 
 ```
 firmware/quadpv_cube/
-├── QuadPV.ioc                      Configuração do STM32CubeMX (pinos, relógios, periféricos)
-├── Core/Src/main.c                 Inicialização no formato do CubeMX (chama QPV_Init/QPV_Loop)
-├── Core/Src/quadpv.c               Lógica do QuadPV: médias, janela de Voc, protocolo, comandos
-├── Core/Src/stm32f1xx_hal_msp.c    Pinos do ADC, DMA e TIM3
-├── USB_DEVICE/                     Porta serial virtual (CDC)
-├── Drivers/, Middlewares/          HAL, CMSIS e biblioteca USB da ST (cópias, com as licenças)
-├── STM32F103C8Tx_FLASH.ld          Mapa de memória
-└── Makefile                        Compilação com o arm-none-eabi-gcc
+├── QuadPV.ioc                      STM32CubeMX configuration (pins, clocks, peripherals)
+├── Core/Src/main.c                 Initialization in CubeMX format (calls QPV_Init/QPV_Loop)
+├── Core/Src/quadpv.c               QuadPV logic: averages, Voc window, protocol, commands
+├── Core/Src/stm32f1xx_hal_msp.c    ADC, DMA and TIM3 pins
+├── USB_DEVICE/                     Virtual serial port (CDC)
+├── Drivers/, Middlewares/          ST HAL, CMSIS and USB library (copies, with their licenses)
+├── STM32F103C8Tx_FLASH.ld          Memory map
+└── Makefile                        Build with arm-none-eabi-gcc
 ```
 
-## Compilar e gravar
+## Building and flashing
 
-**Com `make`** (arm-none-eabi-gcc no PATH; vem com o STM32CubeIDE ou o STM32CubeCLT):
+**With `make`** (arm-none-eabi-gcc on the PATH; it comes with STM32CubeIDE or STM32CubeCLT):
 
 ```bash
 cd firmware/quadpv_cube
-make            # gera build/QuadPV.elf, .hex e .bin
-make flash      # grava pelo ST-Link (SWD) com o STM32_Programmer_CLI
+make            # builds build/QuadPV.elf, .hex and .bin
+make flash      # flashes through the ST-Link (SWD) with STM32_Programmer_CLI
 ```
 
-**Com o STM32CubeIDE**: *File > New > STM32 Project from an Existing STM32CubeMX Configuration File (.ioc)*, escolha o `QuadPV.ioc` e gere o código. O CubeMX preserva os blocos `USER CODE`, onde estão as chamadas ao QuadPV e os pinos dos gates. Copie `Core/Src/quadpv.c` e `Core/Inc/quadpv.h` para o projeto, se não vierem.
+**With STM32CubeIDE**: *File > New > STM32 Project from an Existing STM32CubeMX Configuration File (.ioc)*, choose `QuadPV.ioc` and generate the code. CubeMX keeps the `USER CODE` blocks, which hold the QuadPV calls and the gate pin definitions. Copy `Core/Src/quadpv.c` and `Core/Inc/quadpv.h` into the project if they are not included.
 
-> O `QuadPV.ioc` foi escrito à mão e ainda não foi aberto no CubeMX. O projeto compila sem ele (Makefile). Se o CubeMX reclamar ao abri-lo, confira os pinos com a tabela de [02](02_Hardware_e_Ligacoes.md#pinos).
+> `QuadPV.ioc` was written by hand and has not been opened in CubeMX yet. The project builds without it (Makefile). If CubeMX complains when opening it, check the pins against the table in [02](02_Hardware_and_Wiring.md#pins).
 
-**Sem ST-Link:** ligue um adaptador USB-serial em PA9 (TX) e PA10 (RX), ponha o jumper BOOT0 em 1, reinicie e grave o `build/QuadPV.bin` pelo STM32CubeProgrammer (porta UART). Volte o BOOT0 para 0.
+**Without an ST-Link:** connect a USB-serial adapter to PA9 (TX) and PA10 (RX), set the BOOT0 jumper to 1, reset and flash `build/QuadPV.bin` with STM32CubeProgrammer (UART port). Set BOOT0 back to 0.
 
-**USB:** porta serial virtual com VID `0x0483` e PID `0x5740` (o par padrão da ST), sem driver extra no Windows 10/11, Linux ou macOS. Ao ligar, o firmware puxa o D+ para baixo por 15 ms para o PC reenumerar a placa (problema conhecido da Blue Pill).
+**USB:** virtual serial port with VID `0x0483` and PID `0x5740` (the standard ST pair), no extra driver on Windows 10/11, Linux or macOS. At power-up the firmware pulls D+ low for 15 ms so the PC re-enumerates the board (a known Blue Pill issue).
 
-## Aquisição
+## Acquisition
 
-- **Disparo:** o TIM3 gera 6000 disparos por segundo, derivados do cristal (72 MHz / 12 000). Cada disparo faz o ADC converter 9 canais em sequência:
-  - os 4 shunts e as 4 tensões, com 71,5 ciclos de amostragem cada;
-  - a Vrefint, com 239,5 ciclos (a ST pede ≥ 17,1 µs).
+- **Trigger:** TIM3 generates 6000 triggers per second, derived from the crystal (72 MHz / 12 000). Each trigger makes the ADC convert 9 channels in sequence:
+  - the 4 shunts and the 4 module voltages, with 71.5 sampling cycles each;
+  - Vrefint, with 239.5 cycles (ST asks for ≥ 17.1 µs).
 
-  Uma varredura leva 77 µs.
-- **DMA:** o DMA grava num buffer circular. A cada 16 varreduras (~2,7 ms), a interrupção soma cada canal e o seu quadrado (para o desvio-padrão).
-- **Médias de 1 s:** 6000 varreduras exatas (375 blocos) formam uma linha `D`. Como 6000 varreduras = 60 ciclos de 60 Hz, a interferência da rede e das harmônicas (inclusive o piscar de 120 Hz das lâmpadas) se cancela na média.
-- **Janela de Voc** (a cada T segundos, padrão 60, ou pelo comando `V`), no início de um segundo:
-  1. os 4 MOSFETs abrem juntos;
-  2. 8 blocos (21 ms) são descartados enquanto a tensão estabiliza;
-  3. 25 blocos (400 varreduras = 66,7 ms = 4 ciclos de 60 Hz) formam a linha `V`;
-  4. os MOSFETs fecham, e o resto do segundo é descartado.
+  One scan takes 77 µs.
+- **DMA:** the DMA writes into a circular buffer. Every 16 scans (~2.7 ms) the interrupt adds up each channel and its square (for the standard deviation).
+- **1 s averages:** exactly 6000 scans (375 blocks) make a `D` line. Since 6000 scans = 60 cycles of 60 Hz, mains interference and its harmonics (including the 120 Hz flicker of lamps) cancel in the average.
+- **Voc window** (every T seconds, 60 by default, or on the `V` command), at the start of a second:
+  1. the 4 MOSFETs open together;
+  2. 8 blocks (21 ms) are discarded while the voltage settles;
+  3. 25 blocks (400 scans = 66.7 ms = 4 cycles of 60 Hz) make the `V` line;
+  4. the MOSFETs close, and the rest of the second is discarded.
 
-  Esse segundo não gera linha `D`. Na linha `V`, os canais de corrente dão o zero dos shunts (sem corrente) e os de tensão dão Voc.
-- **Troca de modo:** o segundo em curso é descartado, mais 21 ms, para não misturar curto e aberto.
-- **Primeira janela de Voc:** 2 s depois de ligar, para a interface ter o zero logo.
+  That second produces no `D` line. In the `V` line, the current channels give the shunt zero (no current) and the voltage channels give Voc.
+- **Mode change:** the current second is discarded, plus 21 ms, so shorted and open readings are not mixed.
+- **First Voc window:** 2 s after power-up, so the interface gets the zero early.
 
-## Protocolo serial
+## Serial protocol
 
-Texto ASCII, uma mensagem por linha (`\r\n`).
+ASCII text, one message per line (`\r\n`).
 
-**Da placa para o PC**
+**From the board to the PC**
 
 ```
 D n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 s2 s3 s4 s5 s6 s7 s8 s9
@@ -65,45 +65,47 @@ V n m  a1 a2 a3 a4  v1 v2 v3 v4  r  s1 s2 s3 s4 s5 s6 s7 s8 s9
 # QuadPV fw 3.0.0 tipo=Isc-Voc modo=C T=60 fs=6000 perdidos=0
 ```
 
-| Campo | Significado |
+| Field | Meaning |
 |---|---|
-| `D` / `V` | Média de 1 s (módulos no modo atual) / janela de Voc (módulos em aberto) |
-| `n` | Varreduras promediadas: 6000 na `D`, 400 na `V` |
-| `m` | Modo: `C` (curto, mede Isc) ou `O` (aberto) |
-| `a1`…`a4` | Tensão nos shunts, em contagens, 3 decimais |
-| `v1`…`v4` | Tensão dos módulos, em contagens, 3 decimais |
-| `r` | Vrefint, em contagens, 3 decimais |
-| `s1`…`s9` | Desvio-padrão de uma amostra de cada canal, na mesma ordem, em contagens, 2 decimais (o erro da média é s/√n) |
-| `perdidos` | Segundos que o laço principal não conseguiu enviar (deve ficar em 0) |
+| `D` / `V` | 1 s average (modules in the current mode) / Voc window (modules open) |
+| `n` | Number of averaged scans: 6000 in `D`, 400 in `V` |
+| `m` | Mode: `C` (shorted, measures Isc) or `O` (open) |
+| `a1`…`a4` | Shunt voltages, in counts, 3 decimals |
+| `v1`…`v4` | Module voltages, in counts, 3 decimals |
+| `r` | Vrefint, in counts, 3 decimals |
+| `s1`…`s9` | Standard deviation of a single sample of each channel, same order, in counts, 2 decimals (the error of the mean is s/√n) |
+| `perdidos` | Seconds the main loop could not send ("lost"; should stay at 0) |
 
-**Do PC para a placa**
+The keys in the `#` line (`tipo`, `modo`, `perdidos`) are in Portuguese, as in the firmware.
 
-| Comando | Efeito |
+**From the PC to the board**
+
+| Command | Effect |
 |---|---|
-| `?` | Identificação e estado |
-| `V` | Mede Voc no próximo segundo |
-| `T s` | Voc a cada *s* segundos (0 = só no comando `V`; padrão 60) |
-| `M C` | Curto: mede Isc continuamente (padrão) |
-| `M O` | Aberto: mede Voc continuamente (linhas `D` com `m = O`) |
+| `?` | Identification and state |
+| `V` | Measures Voc in the next second |
+| `T s` | Voc every *s* seconds (0 = only on the `V` command; default 60) |
+| `M C` | Shorted: measures Isc continuously (default) |
+| `M O` | Open: measures Voc continuously (`D` lines with `m = O`) |
 
-Os comandos entram numa fila, então vários seguidos não se perdem. Dá para testar com qualquer terminal serial.
+Commands are queued, so several in a row are not lost. Any serial terminal can be used to test them.
 
-## Teste sem a placa
+## Testing without the board
 
-[`firmware/teste_host/`](../firmware/teste_host/) compila o mesmo `quadpv.c` para o PC, contra um modelo:
+[`firmware/teste_host/`](../firmware/teste_host/) builds the same `quadpv.c` for the PC, against a model:
 
-- 4 módulos com transmitâncias diferentes;
+- 4 modules with different transmittances;
 - shunt + MOSFET;
-- ADC de 12 bits a 6 kHz com ruído branco de 1,5 contagem e offset por canal;
-- 60 Hz de 5 contagens em todos os canais e 2 % de cintilação de 120 Hz na luz.
+- 12-bit ADC at 6 kHz with 1.5-count white noise and a per-channel offset;
+- 5 counts of 60 Hz on every channel and 2 % of 120 Hz flicker in the light.
 
 ```bash
 cd firmware/teste_host
 gcc -O2 -Wall -Istub -I../quadpv_cube/Core/Inc -o sim sim.c ../quadpv_cube/Core/Src/quadpv.c -lm
-./sim saida.txt              # com ruído e interferência
-./sim limpo.txt sem_ruido    # sem ruído nem 60 Hz, para comparar
+./sim saida.txt              # with noise and interference
+./sim limpo.txt sem_ruido    # without noise or 60 Hz, for comparison
 ```
 
-Resultado na última versão:
-- as médias de 1 s com e sem ruído diferem em menos de 0,05 contagem (0,02 mA), ou seja, a interferência de 60 Hz se cancela;
-- o zero medido nas janelas de Voc acerta o valor verdadeiro dentro de ±0,05 contagem.
+Results with the current version:
+- the 1 s averages with and without noise differ by less than 0.05 count (0.02 mA), i.e. the 60 Hz interference cancels;
+- the zero measured in the Voc windows matches the true value within ±0.05 count.

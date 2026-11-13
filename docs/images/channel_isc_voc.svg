@@ -1,23 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" font-family="Arial, Helvetica, sans-serif" font-size="14">
-<title>QuadPV: um canal (Isc e Voc)</title>
+<title>QuadPV: one channel (Isc and Voc)</title>
 <style>.w{stroke:#222;stroke-width:2;fill:none}.c{fill:#fff;stroke:#222;stroke-width:2}.lbl{fill:#222}.val{fill:#0b5394;font-weight:bold}.pin{fill:#b45f06;font-weight:bold}.note{fill:#555;font-size:12px}</style>
 <rect width="960" height="600" fill="#ffffff"/>
-<text x="20" y="30" font-size="18" font-weight="bold" class="lbl">QuadPV: um canal de medida de Isc e Voc (módulo 1; os outros três são iguais)</text>
+<text x="20" y="30" font-size="18" font-weight="bold" class="lbl">QuadPV: one Isc and Voc measurement channel (module 1; the other three are identical)</text>
 <rect x="40" y="90" width="90" height="140" class="c"/>
-<text x="85" y="155" text-anchor="middle" class="lbl">Módulo</text><text x="85" y="173" text-anchor="middle" class="lbl">FV 1</text>
+<text x="85" y="155" text-anchor="middle" class="lbl">PV</text><text x="85" y="173" text-anchor="middle" class="lbl">module 1</text>
 <text x="138" y="112" class="lbl">+</text><text x="138" y="222" class="lbl">−</text>
 <path d="M130 120 H420" class="w"/><circle cx="230" cy="120" r="4" fill="#222"/>
 <path d="M230 120 V70 H520" class="w"/><rect x="520" y="60" width="50" height="20" class="c"/><path d="M570 70 H640" class="w"/><circle cx="610" cy="70" r="4" fill="#222"/>
 <text x="545" y="56" text-anchor="middle" class="val">100 Ω</text>
 <path d="M610 70 V92" class="w"/><path d="M598 92 H622 M598 100 H622" class="w"/><path d="M610 100 V112" class="w"/><path d="M598 112 H622 M602 118 H618 M606 124 H614" class="w"/>
-<text x="628" y="102" class="val">4,7 µF</text>
-<text x="650" y="75" class="pin">PA5 (A5) · tensão V1</text>
+<text x="628" y="102" class="val">4.7 µF</text>
+<text x="650" y="75" class="pin">PA5 (A5) · voltage V1</text>
 <path d="M420 120 V180" class="w"/>
 <rect x="390" y="180" width="60" height="80" class="c"/>
 <text x="420" y="215" text-anchor="middle" class="lbl">Q1</text><text x="420" y="232" text-anchor="middle" class="note">N-MOS</text>
 <text x="426" y="176" class="note">D</text><text x="426" y="275" class="note">S</text><text x="384" y="215" text-anchor="end" class="note">G</text>
-<text x="460" y="200" class="val">IRLZ44N</text><text x="460" y="217" class="note">chave (liga/desliga)</text>
-<text x="176" y="270" class="pin">PB6</text><text x="176" y="306" class="note">saída digital</text>
+<text x="460" y="200" class="val">IRLZ44N</text><text x="460" y="217" class="note">switch (on/off)</text>
+<text x="176" y="270" class="pin">PB6</text><text x="176" y="306" class="note">digital output</text>
 <path d="M176 284 H230" class="w"/><rect x="230" y="274" width="50" height="20" class="c"/>
 <text x="255" y="268" text-anchor="middle" class="val">100 Ω</text>
 <path d="M280 284 H360 V220 H390" class="w"/><circle cx="330" cy="284" r="4" fill="#222"/>
@@ -25,22 +25,22 @@
 <text x="312" y="326" text-anchor="end" class="val">100 kΩ</text>
 <path d="M420 260 V330" class="w"/><circle cx="420" cy="320" r="4" fill="#222"/>
 <rect x="410" y="330" width="20" height="60" class="c"/><path d="M420 390 V420" class="w"/><circle cx="420" cy="420" r="4" fill="#222"/>
-<text x="438" y="355" class="val">Rs = 2 Ω</text><text x="438" y="372" class="note">1 %, 0,5 W, filme metálico</text>
+<text x="438" y="355" class="val">Rs = 2 Ω</text><text x="438" y="372" class="note">1 %, 0.5 W, metal film</text>
 <path d="M130 222 H160 V420 H420" class="w"/>
 <path d="M420 420 V440" class="w"/><path d="M408 440 H432 M412 446 H428 M416 452 H424" class="w"/>
-<text x="455" y="434" class="note">(−) do módulo e GND do ADC no mesmo ponto, junto ao shunt</text>
+<text x="455" y="434" class="note">module (−) and ADC GND at the same point, next to the shunt</text>
 <path d="M420 320 H520" class="w"/><rect x="520" y="310" width="50" height="20" class="c"/><path d="M570 320 H640" class="w"/><circle cx="610" cy="320" r="4" fill="#222"/>
 <text x="545" y="306" text-anchor="middle" class="val">1 kΩ</text>
 <path d="M610 320 V342" class="w"/><path d="M598 342 H622 M598 350 H622" class="w"/><path d="M610 350 V362" class="w"/><path d="M598 362 H622 M602 368 H618 M606 374 H614" class="w"/>
 <text x="628" y="352" class="val">470 nF</text>
 <path d="M610 320 V292" class="w"/><rect x="600" y="248" width="20" height="44" class="c"/><path d="M610 248 V236" class="w"/>
 <text x="604" y="230" class="lbl">3V3</text>
-<text x="628" y="276" class="val">470 kΩ</text><text x="628" y="292" class="note">desloca o zero (~9 contagens)</text>
-<text x="650" y="325" class="pin">PA1 (A1) · corrente I1 = V/Rs</text>
+<text x="628" y="276" class="val">470 kΩ</text><text x="628" y="292" class="note">shifts the zero (~9 counts)</text>
+<text x="650" y="325" class="pin">PA1 (A1) · current I1 = V/Rs</text>
 <rect x="20" y="470" width="920" height="118" fill="#f6f8fa" stroke="#ccc"/>
-<text x="32" y="492" font-weight="bold" class="lbl">Como funciona e por quê</text>
-<text x="32" y="514" class="note">PB6 em 1: o MOSFET conduz e o módulo fica em curto pelo shunt; a tensão no shunt dá a corrente (Isc). PB6 em 0 (a cada minuto, ~0,1 s): módulo em aberto,</text>
-<text x="32" y="534" class="note">o ADC lê Voc, e o shunt sem corrente dá o zero do canal de corrente. Com o shunt no source, a resistência do MOSFET não entra na medida da corrente.</text>
-<text x="32" y="554" class="note">Filtros RC (τ ≈ 0,5 ms) cortam ruído acima de ~300 Hz antes da amostragem a 6 kHz. O 470 kΩ põe o zero do canal de corrente acima de 0 V: o ADC não lê</text>
-<text x="32" y="574" class="note">tensões negativas, e sem ele o ruído cortado em zero distorceria o offset. O deslocamento é proporcional ao 3,3 V (fixo em contagens) e é descontado.</text>
+<text x="32" y="492" font-weight="bold" class="lbl">How it works and why</text>
+<text x="32" y="514" class="note">PB6 high: the MOSFET conducts and the module is shorted through the shunt; the shunt voltage gives the current (Isc). PB6 low (every minute, ~0.1 s):</text>
+<text x="32" y="534" class="note">module open: the ADC reads Voc, and the idle shunt gives the current-channel zero. With the shunt at the source, Rds(on) does not affect the current.</text>
+<text x="32" y="554" class="note">RC filters (τ ≈ 0.5 ms) cut noise above ~300 Hz before sampling at 6 kHz. The 470 kΩ puts the zero of the current channel above 0 V: the ADC cannot read</text>
+<text x="32" y="574" class="note">negative voltages, and without it the noise clipped at zero would bias the offset. The shift is proportional to the 3.3 V (fixed in counts) and is subtracted.</text>
 </svg>
