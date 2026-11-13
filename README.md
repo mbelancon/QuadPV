@@ -80,6 +80,7 @@ Detalhes, valores e cuidados de montagem em [docs/02_Hardware_e_Ligacoes.md](doc
 ├── docs/                    Documentação
 ├── legado/pv-stm32.py       Interface original (Tkinter), só como referência
 ├── CHANGELOG.md             Histórico de versões
+├── LICENSE                  GPL-3.0
 └── requirements.txt         Dependências Python
 ```
 
@@ -88,3 +89,9 @@ A versão com carga eletrônica (MOSFET + op-amp, curvas I–V e rastreamento do
 ## Versões
 
 O que mudou em cada versão está no [CHANGELOG.md](CHANGELOG.md). O número aparece no título da janela.
+
+## Licença
+
+Distribuído sob a licença GPL-3.0 (GNU General Public License v3.0). Veja [LICENSE](LICENSE).
+
+As bibliotecas da STMicroelectronics e da Arm em `firmware/quadpv_cube/Drivers/` e `firmware/quadpv_cube/Middlewares/` mantêm as licenças próprias, nos arquivos `LICENSE` de cada pasta.
