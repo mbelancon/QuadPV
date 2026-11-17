@@ -1,5 +1,9 @@
 # Version history
 
+## Unreleased
+- `CLAUDE.md` (working rules for Claude) and `CONTEXTO.md` (current project state, replaces
+  `CONTEXT.md`), both in Portuguese; `docs/context/CONTEXT-3.0.1.md` snapshot of version 3.0.1.
+
 ## 3.0.1 – English
 - Documentation, interface texts and Python code comments translated to English; documentation files
   renamed (`docs/01_Materials.md` … `docs/05_Calibration_and_Uncertainty.md`, `docs/images/`), the

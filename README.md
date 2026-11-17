@@ -79,7 +79,8 @@ Details, values and assembly tips in [docs/02_Hardware_and_Wiring.md](docs/02_Ha
 ├── firmware/pv/pv.ino       Original firmware (Arduino), reference only
 ├── docs/                    Documentation
 ├── legacy/pv-stm32.py       Original interface (Tkinter), reference only
-├── CONTEXT.md               Short project context for developers (and for AI assistants)
+├── CLAUDE.md                Working rules for Claude (Portuguese)
+├── CONTEXTO.md              Current project state for developers and AI assistants (Portuguese)
 ├── CHANGELOG.md             Version history
 ├── LICENSE                  GPL-3.0
 └── requirements.txt         Python dependencies
